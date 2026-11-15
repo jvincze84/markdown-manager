@@ -128,6 +128,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 /* ---------- Új fájl ---------- */
 #new-file { background: transparent; color: #fff; border-color: #57606a; }
 #new-file:hover { background: #32383f; }
+#manage-repos { background: transparent; color: #fff; border-color: #57606a; }
+#manage-repos:hover { background: #32383f; }
 .badge.new { background: var(--success-bg); border-color: var(--success-border); color: var(--success-fg); }
 .new-path {
   display: flex; align-items: center; flex: 1; max-width: 520px; height: 32px;
@@ -357,3 +359,38 @@ a.fhash:hover { color: var(--accent); border-color: var(--accent); }
 .emoji-foot { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border-top: 1px solid var(--border); color: var(--fg-muted); }
 .emoji-preview { font-size: 22px; font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
 .emoji-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- Repók: szűrő, fa, kezelő ablak ---------- */
+.repo-filter-wrap { position: relative; }
+.repo-menu {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 50; min-width: 280px; max-height: 60vh; overflow: auto;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.18); padding: 6px;
+}
+.repo-opt { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.repo-opt:hover { background: var(--surface-hover); }
+.repo-opt .repo-id { font-weight: 600; }
+.repo-opt .muted { flex: 1; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.repo-opt .count { min-width: 20px; padding: 0 6px; border-radius: 10px; background: var(--neutral-bg); font-size: 12px; text-align: center; }
+.repo-menu-foot { display: flex; justify-content: flex-end; gap: 6px; padding: 6px 4px 2px; border-top: 1px solid var(--border); margin-top: 4px; }
+.repo-node { font-weight: 600; }
+.repo-path { margin-left: 8px; font-size: 12px; font-weight: normal; }
+.new-path-repo { height: 100%; border: 0; border-right: 1px solid var(--border); background: var(--surface-2); color: var(--fg); font: 13px ui-monospace, monospace; padding: 0 6px; }
+.repo-body { overflow: auto; padding: 12px 14px 16px; }
+.repo-server { font-size: 12px; font-family: ui-monospace, monospace; }
+.repo-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 14px; }
+.repo-table th, .repo-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.repo-table th { font-size: 12px; color: var(--fg-muted); font-weight: 600; }
+.repo-table td.actions { white-space: nowrap; text-align: right; }
+.repo-table td code { font-size: 12px; }
+.repo-table .empty-row td { color: var(--fg-muted); text-align: center; padding: 14px; }
+.repo-form { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px 12px; background: var(--surface-2); }
+.repo-form h4 { margin: 0 0 8px; font-size: 14px; }
+.repo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.repo-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--fg-muted); }
+.repo-grid label:first-child { grid-column: 1 / -1; }
+.repo-grid input { height: 30px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--fg); font: 13px ui-monospace, monospace; }
+.repo-grid input:disabled { opacity: .6; }
+.repo-url { display: flex; align-items: center; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); overflow: hidden; }
+.repo-url input { flex: 1; border: 0; border-radius: 0; }
+.repo-url-prefix { padding: 0 2px 0 8px; font: 12px ui-monospace, monospace; color: var(--fg-muted); white-space: nowrap; }
+.repo-form-actions { display: flex; gap: 8px; margin-top: 12px; }

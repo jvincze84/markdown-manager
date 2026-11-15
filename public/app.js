@@ -82,27 +82,96 @@
   let files = [];
   let status = null;
 
+  const repoList = () => status?.repos || [];
+  const repoInfo = (id) => repoList().find((r) => r.id === id) || null;
+  const baseOf = (f) => repoInfo(f?.repo)?.branch || 'alap';
+
   function renderStatus() {
     const s = status;
     if (!s) return;
     const parts = [];
     if (!s.configured) parts.push('<span class="err">GIT_URL nincs beállítva</span>');
-    else parts.push(`<b>${esc(s.repo)}</b>`);
-    parts.push(`branch: <code>${esc(s.baseBranch)}</code>`);
-    parts.push(`könyvtár: <code>/${esc(s.docsPath)}</code>`);
-    if (s.head) parts.push(`commit: <code>${esc(s.head.commit)}</code>`);
-    parts.push(`${s.fileCount} fájl`);
+    else parts.push(`<b>${esc(s.server)}</b>`);
+    parts.push(`${s.repos.length} repó`);
+    parts.push(`${s.totalFiles} fájl`);
     if (s.lastSync) parts.push(`utolsó sync: ${new Date(s.lastSync).toLocaleString()}`);
     if (s.error) parts.push(`<span class="err">Hiba: ${esc(s.error)}</span>`);
+    for (const r of s.repos) if (r.error) parts.push(`<span class="err" title="${esc(r.error)}">${esc(r.id)}: hiba</span>`);
     $('#status').innerHTML = parts.join(' · ');
+    $('#status').title = s.repos.map((r) => `${r.id}: ${r.url} (${r.branch}${r.docsPath ? `, /${r.docsPath}` : ''})`
+      + `${r.head ? ` @ ${r.head.commit}` : ' – még nincs letöltve'}`).join('\n');
   }
 
   async function loadAll() {
     [status, files] = await Promise.all([api('/api/status'), api('/api/files')]);
+    pruneRepoFilter();
     renderStatus();
+    renderRepoFilter();
     renderView();
-    $('#empty').hidden = files.length > 0;
+    const empty = $('#empty');
+    empty.hidden = files.length > 0;
+    empty.innerHTML = repoList().length
+      ? 'Még nincs letöltött tartalom. Kattints a <b>⟳ Sync</b> gombra a repók letöltéséhez.'
+      : 'Még nincs felvett repó. Vegyél fel egyet a <b>⚙ Repók</b> gombbal.';
   }
+
+  // ---------- Szűrő: repók (több is kiválasztható; üres = mind) ----------
+
+  let repoFilter = (() => {
+    try { const v = JSON.parse(localStorage.getItem('repoFilter')); return new Set(Array.isArray(v) ? v : []); } catch { return new Set(); }
+  })();
+  const saveRepoFilter = () => localStorage.setItem('repoFilter', JSON.stringify([...repoFilter]));
+  // nincs kiválasztva egy sem, vagy mind ki van választva = nincs szűrés
+  const repoFilterActive = () => repoFilter.size > 0 && repoFilter.size < repoList().length;
+  const inRepoFilter = (f) => !repoFilterActive() || repoFilter.has(f.repo);
+  /** A repó-szűrőnek megfelelő fájlok (a fa, a módosított lista és a számláló ezekből dolgozik). */
+  const visibleFiles = () => files.filter(inRepoFilter);
+
+  /** Már nem létező repók kivétele a szűrőből. */
+  function pruneRepoFilter() {
+    const ids = new Set(repoList().map((r) => r.id));
+    const before = repoFilter.size;
+    repoFilter = new Set([...repoFilter].filter((id) => ids.has(id)));
+    if (repoFilter.size !== before) saveRepoFilter();
+  }
+
+  function renderRepoFilter() {
+    const list = repoList();
+    const btn = $('#repo-filter');
+    btn.hidden = list.length < 2;
+    btn.classList.toggle('active', repoFilterActive());
+    $('#repo-filter-label').textContent = repoFilterActive()
+      ? (repoFilter.size === 1 ? [...repoFilter][0] : `${repoFilter.size} / ${list.length}`) : 'mind';
+    $('#repo-menu-list').innerHTML = list.map((r) => `
+      <label class="repo-opt" title="${esc(r.url)}">
+        <input type="checkbox" value="${esc(r.id)}" ${repoFilter.has(r.id) ? 'checked' : ''}>
+        <span class="repo-id">${esc(r.id)}</span>
+        <span class="muted">${esc(r.path)}</span>
+        <span class="count">${r.fileCount}</span>
+      </label>`).join('');
+  }
+
+  $('#repo-filter').addEventListener('click', (e) => {
+    e.stopPropagation();
+    $('#repo-menu').hidden = !$('#repo-menu').hidden;
+  });
+  $('#repo-menu').addEventListener('click', (e) => e.stopPropagation());
+  document.addEventListener('click', () => { $('#repo-menu').hidden = true; });
+  $('#repo-menu-list').addEventListener('change', (e) => {
+    const cb = e.target.closest('input[type=checkbox]');
+    if (!cb) return;
+    if (cb.checked) repoFilter.add(cb.value);
+    else repoFilter.delete(cb.value);
+    saveRepoFilter();
+    renderRepoFilter();
+    renderView();
+  });
+  $('#repo-menu-all').addEventListener('click', () => {
+    repoFilter.clear();
+    saveRepoFilter();
+    renderRepoFilter();
+    renderView();
+  });
 
   // ---------- Szűrő: módosított / új fájlok ----------
 
@@ -110,7 +179,7 @@
   const isChanged = (f) => Boolean(f.editBranch);
 
   const prButton = (f) => f.prUrl
-    ? `<a class="btn sm pr-link" href="${esc(f.prUrl)}" target="_blank" rel="noopener" title="Pull request: ${esc(f.editBranch)} → ${esc(status?.baseBranch || '')}">↗ Pull request</a>`
+    ? `<a class="btn sm pr-link" href="${esc(f.prUrl)}" target="_blank" rel="noopener" title="Pull request: ${esc(f.editBranch)} → ${esc(baseOf(f))}">↗ Pull request</a>`
     : '';
 
   const badgeOf = (f) => f.isNew
@@ -136,9 +205,10 @@
     return `${label}: ${fullTime(c.date)}\n${c.hash.slice(0, 10)} · ${c.author}\n${c.subject}`;
   }
 
-  function hashLink(c, cls = '') {
+  function hashLink(c, repo, cls = '') {
     const short = esc(c.hash.slice(0, 7));
-    const url = status?.commitUrl ? status.commitUrl.replace('{hash}', c.hash) : '';
+    const tpl = repoInfo(repo)?.commitUrl;
+    const url = tpl ? tpl.replace('{hash}', c.hash) : '';
     return url
       ? `<a class="fhash ${cls}" href="${esc(url)}" target="_blank" rel="noopener">${short}</a>`
       : `<code class="fhash ${cls}">${short}</code>`;
@@ -152,9 +222,9 @@
     const onBranch = Boolean(f.branchCommit);
     let tip = '';
     if (f.branchCommit) tip += commitTip(f.branchCommit, `Utolsó mentés (${f.editBranch})`);
-    if (f.commit) tip += `${tip ? '\n\n' : ''}${commitTip(f.commit, `Utolsó módosítás (${status?.baseBranch || 'alap'})`)}`;
+    if (f.commit) tip += `${tip ? '\n\n' : ''}${commitTip(f.commit, `Utolsó módosítás (${baseOf(f)})`)}`;
     return `<span class="fmeta">
-      ${c ? `<span class="fdate${onBranch ? ' on-branch' : ''}" title="${esc(tip)}">${onBranch ? '✎ ' : ''}${esc(relTime(c.date))}</span>${hashLink(c, onBranch ? 'on-branch' : '')}`
+      ${c ? `<span class="fdate${onBranch ? ' on-branch' : ''}" title="${esc(tip)}">${onBranch ? '✎ ' : ''}${esc(relTime(c.date))}</span>${hashLink(c, f.repo, onBranch ? 'on-branch' : '')}`
         : '<span class="fdate muted">—</span><span class="fhash"></span>'}
       <button type="button" class="fedit" data-path="${esc(f.path)}" title="Szerkesztés"${f.isDeleted ? ' style="visibility:hidden"' : ''}>✎</button>
     </span>`;
@@ -166,11 +236,11 @@
     if (!r.editBranch || r.isNew || !r.foundIn || r.foundIn === 'both') return '';
     return r.foundIn === 'branch'
       ? '<span class="found-note">csak a módosított verzióban</span>'
-      : `<span class="found-note">csak a(z) ${esc(status?.baseBranch || 'alap')} verzióban</span>`;
+      : `<span class="found-note">csak a(z) ${esc(baseOf(r))} verzióban</span>`;
   }
 
   function renderChanged() {
-    const list = files.filter(isChanged).sort((a, b) => a.docPath.localeCompare(b.docPath));
+    const list = visibleFiles().filter(isChanged).sort((a, b) => a.docPath.localeCompare(b.docPath));
     $('#changed').innerHTML = list.length
       ? list.map((f) => `
         <div class="crow" data-path="${esc(f.path)}">
@@ -184,15 +254,15 @@
   }
 
   function renderView() {
-    const n = files.filter(isChanged).length;
+    const n = visibleFiles().filter(isChanged).length;
     $('#filter-count').textContent = n;
     $('#filter-changed').classList.toggle('active', filterChanged);
     const searching = searchActive();
     renderTree();
     if (filterChanged) renderChanged();
     $('#tree').hidden = searching || filterChanged;
-    $('#clear-filters').hidden = !searching && !filterChanged;
-    const hasDirs = files.some((f) => f.docPath.includes('/'));
+    $('#clear-filters').hidden = !searching && !filterChanged && !repoFilterActive();
+    const hasDirs = visibleFiles().length > 0;
     $('#expand-all').hidden = $('#collapse-all').hidden = searching || filterChanged || !hasDirs;
     $('#changed').hidden = searching || !filterChanged;
     $('#results').hidden = !searching;
@@ -206,7 +276,7 @@
 
   function buildTree() {
     const root = { dirs: {}, files: [] };
-    for (const f of files) {
+    for (const f of visibleFiles()) {
       const parts = f.docPath.split('/');
       let node = root;
       for (const d of parts.slice(0, -1)) node = node.dirs[d] ||= { dirs: {}, files: [] };
@@ -224,20 +294,31 @@
       <span class="fname">${esc(f.name)}</span>${f.title && f.title !== f.name.replace(/\.md$/i, '') ? `<span class="ftitle">${esc(f.title)}</span>` : ''}${badge}</a>${fileMeta(f)}</li>`;
   }
 
-  // Kibontott könyvtárak (localStorage); null = alapértelmezés (csak a legfelső szint nyitva)
+  // Kibontott könyvtárak (localStorage); null = alapértelmezés (a repók és a bennük lévő legfelső szint nyitva)
   let openDirs = (() => {
-    try { const v = JSON.parse(localStorage.getItem('openDirs')); return Array.isArray(v) ? new Set(v) : null; } catch { return null; }
+    try { const v = JSON.parse(localStorage.getItem('openDirs2')); return Array.isArray(v) ? new Set(v) : null; } catch { return null; }
   })();
-  const saveOpenDirs = () => localStorage.setItem('openDirs', JSON.stringify([...openDirs]));
+  // 'openDirs2': a repó-szintű fa kulcsai (<repó>/<könyvtár>); a régi 'openDirs' kulcsai már nem érvényesek
+  const saveOpenDirs = () => localStorage.setItem('openDirs2', JSON.stringify([...openDirs]));
+  // A repók (legfelső szint) fordítva: az összecsukottakat jegyezzük meg → egy újonnan felvett repó nyitva jelenik meg
+  let closedRepos = (() => {
+    try { const v = JSON.parse(localStorage.getItem('closedRepos')); return new Set(Array.isArray(v) ? v : []); } catch { return new Set(); }
+  })();
+  const saveClosedRepos = () => localStorage.setItem('closedRepos', JSON.stringify([...closedRepos]));
 
   function renderNode(node, depth, prefix = '') {
-    const dirs = Object.keys(node.dirs).sort((a, b) => a.localeCompare(b));
+    const dirs = Object.keys(node.dirs).sort((a, b) => collator.compare(a, b));
     const fs = [...node.files].sort((a, b) => a.name.localeCompare(b.name));
     let html = '<ul>';
     for (const d of dirs) {
       const key = prefix + d;
-      const open = openDirs ? openDirs.has(key) : depth < 1;
-      html += `<li><details data-dir="${esc(key)}" ${open ? 'open' : ''}><summary>📁 ${esc(d)}</summary>${renderNode(node.dirs[d], depth + 1, key + '/')}</details></li>`;
+      const open = depth === 0 ? !closedRepos.has(key) : openDirs ? openDirs.has(key) : depth < 2;
+      const repo = depth === 0 ? repoInfo(d) : null;
+      const summary = repo
+        ? `<span class="repo-node" title="${esc(repo.url)} · ${esc(repo.branch)}${repo.docsPath ? ` · /${esc(repo.docsPath)}` : ''}">📦 ${esc(d)}</span>`
+          + `<span class="muted repo-path">${esc(repo.path)}</span>${repo.error ? '<span class="badge del" title="' + esc(repo.error) + '">hiba</span>' : ''}`
+        : `📁 ${esc(d)}`;
+      html += `<li><details data-dir="${esc(key)}"${depth === 0 ? ' data-repo' : ''} ${open ? 'open' : ''}><summary>${summary}</summary>${renderNode(node.dirs[d], depth + 1, key + '/')}</details></li>`;
     }
     html += fs.map(fileItem).join('');
     return html + '</ul>';
@@ -245,12 +326,19 @@
 
   function renderTree() {
     $('#tree').innerHTML = files.length ? renderNode(buildTree(), 0) : '';
+    if (files.length && !visibleFiles().length) $('#tree').innerHTML = '<div class="rcount">A kiválasztott repókban nincs fájl.</div>';
   }
 
   // a 'toggle' esemény nem buborékol → capture
   $('#tree').addEventListener('toggle', (e) => {
     const d = e.target;
     if (!d.matches?.('details[data-dir]')) return;
+    if (d.hasAttribute('data-repo')) {
+      if (d.open) closedRepos.delete(d.dataset.dir);
+      else closedRepos.add(d.dataset.dir);
+      saveClosedRepos();
+      return;
+    }
     if (!openDirs) openDirs = new Set([...$('#tree').querySelectorAll('details[open]')].map((x) => x.dataset.dir));
     if (d.open) openDirs.add(d.dataset.dir);
     else openDirs.delete(d.dataset.dir);
@@ -260,7 +348,9 @@
   function setAllDirs(open) {
     const all = [...$('#tree').querySelectorAll('details[data-dir]')];
     openDirs = new Set(open ? all.map((d) => d.dataset.dir) : []);
+    closedRepos = new Set(open ? [] : all.filter((d) => d.hasAttribute('data-repo')).map((d) => d.dataset.dir));
     saveOpenDirs();
+    saveClosedRepos();
     for (const d of all) d.open = open;
   }
   $('#expand-all').addEventListener('click', () => setAllDirs(true));
@@ -270,6 +360,9 @@
     $('#search-name').value = '';
     $('#search-content').value = '';
     filterChanged = false;
+    repoFilter.clear();
+    saveRepoFilter();
+    renderRepoFilter();
     renderView();
     $('#search-name').focus();
   });
@@ -288,7 +381,8 @@
       $('#changed').hidden = !filterChanged;
       return;
     }
-    let results = await api(`/api/search?name=${encodeURIComponent(name)}&q=${encodeURIComponent(q)}`).catch((e) => (toast(esc(e.message), 'error'), []));
+    const repos = repoFilterActive() ? `&repos=${encodeURIComponent([...repoFilter].join(','))}` : '';
+    let results = await api(`/api/search?name=${encodeURIComponent(name)}&q=${encodeURIComponent(q)}${repos}`).catch((e) => (toast(esc(e.message), 'error'), []));
     if (seq !== searchSeq) return;
     if (filterChanged) results = results.filter(isChanged);
     $('#tree').hidden = true;
@@ -298,6 +392,7 @@
       name && `fájlnév: „${esc(name)}”`,
       q && `tartalom: „${esc(q)}”`,
       filterChanged && 'csak módosított / új',
+      repoFilterActive() && `repó: ${[...repoFilter].map(esc).join(', ')}`,
     ].filter(Boolean).join(' · ');
     $('#results').innerHTML = results.length
       ? `<div class="rcount">${results[0].approximate
@@ -407,7 +502,7 @@
     await loadAll().catch(() => {});
     if (last.ok) {
       setSyncState('kész', 'ok');
-      toast(`Sync kész: ${status.fileCount} fájl`, 'success');
+      toast(`Sync kész: ${status.totalFiles} fájl`, 'success');
       autoClose = setTimeout(closeSyncDialog, 2500);
     } else {
       setSyncState('hiba', 'error');
@@ -416,12 +511,13 @@
     }
   }
 
-  $('#sync').addEventListener('click', async () => {
+  /** Sync indítása (ids: csak ezek a repók; alapértelmezés: mind) és a napló követése. */
+  async function startSyncFor(ids) {
     openSyncDialog();
     if (following) return; // már fut → csak megmutatjuk a naplót
     $('.progress', dlg).classList.remove('error');
     try {
-      await api('/api/sync', { method: 'POST' });
+      await api('/api/sync', { method: 'POST', body: JSON.stringify(ids ? { repos: ids } : {}) });
     } catch (e) {
       if (e.status !== 409) {
         setSyncState('hiba', 'error');
@@ -430,6 +526,124 @@
       }
     }
     followSync();
+  }
+  $('#sync').addEventListener('click', () => startSyncFor(null));
+
+  // ---------- Repók kezelése ----------
+
+  const repoDlg = $('#repo-dialog');
+  const repoForm = $('.repo-form', repoDlg);
+  let editingRepo = null; // szerkesztett repó azonosítója (null = új felvétele)
+
+  function renderRepoTable() {
+    const list = repoList();
+    $('.repo-server', repoDlg).textContent = status?.server || 'GIT_URL nincs beállítva';
+    $('.repo-url-prefix', repoForm).textContent = `${status?.server || ''}/`;
+    $('tbody', repoDlg).innerHTML = list.length ? list.map((r) => `
+      <tr data-id="${esc(r.id)}">
+        <td><b>${esc(r.id)}</b></td>
+        <td><code title="${esc(r.url)}">${esc(r.path)}</code></td>
+        <td><code>${esc(r.branch)}</code></td>
+        <td><code>/${esc(r.docsPath)}</code></td>
+        <td><code>/${esc(r.assetsPath)}</code></td>
+        <td>${r.error ? `<span class="err" title="${esc(r.error)}">hiba</span>`
+          : r.head ? `${r.fileCount} fájl · <code>${esc(r.head.commit)}</code>` : '<span class="muted">nincs letöltve</span>'}</td>
+        <td class="actions">
+          <button type="button" class="btn sm repo-sync" title="Csak ennek a repónak a letöltése / frissítése">⟳</button>
+          <button type="button" class="btn sm repo-edit" title="Beállítások módosítása">✎</button>
+          <button type="button" class="btn sm danger repo-remove" title="Eltávolítás az appból">🗑</button>
+        </td>
+      </tr>`).join('') : '<tr class="empty-row"><td colspan="7">Még nincs felvett repó.</td></tr>';
+  }
+
+  function resetRepoForm() {
+    editingRepo = null;
+    repoForm.reset();
+    repoForm.elements.branch.value = status?.defaultBranch || 'main';
+    repoForm.elements.path.disabled = false;
+    repoForm.elements.id.disabled = false;
+    $('.repo-form-title', repoForm).textContent = 'Új repó felvétele';
+    $('.repo-submit', repoForm).textContent = '＋ Felvétel és letöltés';
+    $('.repo-cancel', repoForm).hidden = true;
+  }
+
+  function openRepoDialog() {
+    renderRepoTable();
+    resetRepoForm();
+    repoDlg.hidden = false;
+    repoForm.elements.path.focus();
+  }
+  const closeRepoDialog = () => { repoDlg.hidden = true; };
+  $('#manage-repos').addEventListener('click', openRepoDialog);
+  $('.repo-close', repoDlg).addEventListener('click', closeRepoDialog);
+  $('.sync-backdrop', repoDlg).addEventListener('click', closeRepoDialog);
+  $('.repo-cancel', repoForm).addEventListener('click', resetRepoForm);
+
+  // azonosító javaslat a repó útvonalából (ugyanaz a szabály, mint a szerveren)
+  repoForm.elements.path.addEventListener('input', () => {
+    const last = repoForm.elements.path.value.trim().replace(/\/+$/, '').split('/').pop() || '';
+    repoForm.elements.id.placeholder = last.replace(/\.git$/i, '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '-').replace(/^[-_]+|-+$/g, '').slice(0, 40) || 'automatikus';
+  });
+
+  $('tbody', repoDlg).addEventListener('click', async (e) => {
+    const row = e.target.closest('tr[data-id]');
+    if (!row) return;
+    const r = repoInfo(row.dataset.id);
+    if (!r) return;
+    if (e.target.closest('.repo-edit')) {
+      editingRepo = r.id;
+      const f = repoForm.elements;
+      f.path.value = r.path;
+      f.id.value = r.id;
+      f.branch.value = r.branch;
+      f.docsPath.value = r.docsPath;
+      f.assetsPath.value = r.assetsPath;
+      f.path.disabled = true;
+      f.id.disabled = true;
+      $('.repo-form-title', repoForm).textContent = `„${r.id}” módosítása`;
+      $('.repo-submit', repoForm).textContent = '💾 Mentés és újratöltés';
+      $('.repo-cancel', repoForm).hidden = false;
+      f.branch.focus();
+    } else if (e.target.closest('.repo-remove')) {
+      if (!confirm(`Eltávolítod a(z) „${r.id}” repót az appból?\n\nA helyi másolat és a még nem mentett képfeltöltések törlődnek. A git szerveren semmi nem változik (a szerkesztési branchek is megmaradnak), a repó később újra felvehető.`)) return;
+      try {
+        await api(`/api/repos/${encodeURIComponent(r.id)}`, { method: 'DELETE' });
+        toast(`Repó eltávolítva: <b>${esc(r.id)}</b>`, 'success');
+        await loadAll();
+        renderRepoTable();
+        if (editingRepo === r.id) resetRepoForm();
+      } catch (err) {
+        toast(`Hiba: ${esc(err.message)}`, 'error', 8000);
+      }
+    } else if (e.target.closest('.repo-sync')) {
+      closeRepoDialog();
+      startSyncFor([r.id]);
+    }
+  });
+
+  repoForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = repoForm.elements;
+    const body = { path: f.path.value, id: f.id.value, branch: f.branch.value, docsPath: f.docsPath.value, assetsPath: f.assetsPath.value };
+    const btn = $('.repo-submit', repoForm);
+    btn.disabled = true;
+    try {
+      const r = editingRepo
+        ? await api(`/api/repos/${encodeURIComponent(editingRepo)}`, { method: 'PUT', body: JSON.stringify(body) })
+        : await api('/api/repos', { method: 'POST', body: JSON.stringify(body) });
+      toast(`${editingRepo ? 'Repó módosítva' : 'Repó felvéve'}: <b>${esc(r.repo.id)}</b> — letöltés…`, 'success');
+      await loadAll();
+      renderRepoTable();
+      resetRepoForm();
+      closeRepoDialog();
+      openSyncDialog();
+      followSync();
+    } catch (err) {
+      toast(`Hiba: ${esc(err.message)}`, 'error', 8000);
+    } finally {
+      btn.disabled = false;
+    }
   });
 
   // ---------- Mermaid (lusta betöltés) ----------
@@ -471,30 +685,42 @@
       document.body.append(this.el);
       document.body.classList.add('has-layer');
       this.bind();
-      if (this.creating) this.initCreate(opts.dir || '');
+      if (this.creating) this.initCreate(opts.dir || '', opts.repo);
       else this.load(opts.source).then(() => { if (opts.edit && this.data?.content !== undefined) this.startEdit(); });
     }
 
-    initCreate(dir) {
-      const prefix = status?.docsPath ? `${status.docsPath}/` : '';
+    initCreate(dir, repoId) {
       this.q('.title').textContent = 'Új fájl';
-      this.q('.path').textContent = `${prefix}…`;
       this.q('.edit').hidden = true;
       const wrap = this.q('.new-path');
       wrap.hidden = false;
-      this.q('.new-path-prefix').textContent = prefix || '/';
       const input = this.q('.new-path-input');
       input.value = dir ? `${dir}/` : '';
-      const dirs = [...new Set(files.flatMap((f) => {
-        const parts = f.docPath.split('/').slice(0, -1);
-        return parts.map((_, i) => parts.slice(0, i + 1).join('/') + '/');
-      }))].sort();
+      const sel = this.q('.new-path-repo');
+      const list = repoList().filter((r) => r.head);
+      sel.innerHTML = list.map((r) => `<option value="${esc(r.id)}">${esc(r.id)}</option>`).join('');
+      sel.hidden = list.length < 2;
+      sel.value = list.some((r) => r.id === repoId) ? repoId : list[0].id;
       const dl = this.q('.new-path-dirs');
       dl.id = `dirs-${Date.now()}`;
       input.setAttribute('list', dl.id);
-      dl.innerHTML = dirs.map((d) => `<option value="${esc(d)}">`).join('');
-      input.addEventListener('input', () => {
-        this.q('.path').textContent = prefix + (input.value || '…');
+      const update = () => {
+        const repo = sel.value;
+        const docsPath = repoInfo(repo)?.docsPath || '';
+        this.q('.new-path-prefix').textContent = `/${docsPath ? `${docsPath}/` : ''}`;
+        this.q('.path').textContent = `${repo}/${docsPath ? `${docsPath}/` : ''}${input.value || '…'}`;
+        // könyvtár javaslatok a kiválasztott repóból (a repó azonosító nélkül)
+        const dirs = [...new Set(files.filter((f) => f.repo === repo).flatMap((f) => {
+          const parts = f.docPath.split('/').slice(1, -1);
+          return parts.map((_, i) => parts.slice(0, i + 1).join('/') + '/');
+        }))].sort();
+        dl.innerHTML = dirs.map((d) => `<option value="${esc(d)}">`).join('');
+      };
+      update();
+      input.addEventListener('input', update);
+      sel.addEventListener('change', () => {
+        localStorage.setItem('newFileRepo', sel.value);
+        update();
       });
       this.data = { content: '# Új dokumentum\n\n' };
       this.startEdit().then(() => {
@@ -850,6 +1076,10 @@
         });
         this.addTableFormatButton();
         this.addEmojiButton();
+        // Módváltáskor a Toast UI a teljes dokumentumot egy visszavonható lépéssel cseréli le; Ctrl+Z-re ez
+        // visszaállna a másik mód elavult állapotára (WYSIWYG → Markdown után elvesznének a WYSIWYG
+        // módosítások, Markdown → WYSIWYG után üres lenne a dokumentum) → az előzmény a váltásnál indul.
+        this.editor.on('changeMode', () => resetEditorHistory(this.editor));
       } else {
         this.editor.setMarkdown(content, false);
       }
@@ -920,13 +1150,15 @@
       toast(`${count} táblázat rendezve.`, 'success');
     }
 
-    /** A szerkesztett dokumentum repo-relatív útvonala (új fájlnál a beírt útvonalból). */
+    /** A szerkesztett dokumentum virtuális útvonala (<repó>/<útvonal>; új fájlnál a beírt útvonalból). */
     docPath() {
       if (!this.creating) return this.path;
       let p = this.q('.new-path-input').value.trim().replace(/\\/g, '/').replace(/^\/+/, '');
       if (!p || p.endsWith('/')) p += 'uj.md';
       if (!/\.(md|markdown)$/i.test(p)) p += '.md';
-      return (status?.docsPath ? `${status.docsPath}/` : '') + p;
+      const repo = this.q('.new-path-repo').value;
+      const docsPath = repoInfo(repo)?.docsPath || '';
+      return `${repo}/${docsPath ? `${docsPath}/` : ''}${p}`;
     }
 
     async uploadImage(blob, callback) {
@@ -980,7 +1212,7 @@
         const md = this.editor.getMarkdown();
         const payload = { content: this.creating ? this.fixUploadLinks(md) : md, message: this.q('.commit-msg').value };
         const r = this.creating
-          ? await api('/api/file', { method: 'POST', body: JSON.stringify({ ...payload, path: this.q('.new-path-input').value }) })
+          ? await api('/api/file', { method: 'POST', body: JSON.stringify({ ...payload, repo: this.q('.new-path-repo').value, path: this.q('.new-path-input').value }) })
           : await api('/api/file', { method: 'PUT', body: JSON.stringify({ ...payload, path: this.path }) });
         if (this.creating) {
           this.creating = false;
@@ -1027,8 +1259,11 @@
   }
 
   $('#new-file').addEventListener('click', () => {
-    if (!status?.head) return toast('Előbb futtasd a Sync-et.', 'error');
-    openLayer(null, null, { create: true });
+    if (!repoList().length) return toast('Előbb vegyél fel egy repót (⚙ Repók).', 'error');
+    if (!repoList().some((r) => r.head)) return toast('Előbb futtasd a Sync-et.', 'error');
+    // alapértelmezett repó: ha a szűrőben pontosan egy van kiválasztva, az; különben a legutóbb használt
+    const repo = repoFilterActive() && repoFilter.size === 1 ? [...repoFilter][0] : localStorage.getItem('newFileRepo');
+    openLayer(null, null, { create: true, repo });
   });
 
   // ---------- Kódblokk másolás ----------
@@ -1118,13 +1353,18 @@
     while (i < a.length && i < b.length - 1 && a[i] === b[i]) i++;
     return [...a.slice(i).map(() => '..'), ...b.slice(i)].join('/');
   }
-  /** Markdown képhivatkozás → böngészőben megjeleníthető URL (relatív útvonal a dokumentumhoz képest). */
+  /**
+   * Markdown képhivatkozás → böngészőben megjeleníthető URL (relatív útvonal a dokumentumhoz képest).
+   * docPath virtuális útvonal (<repó>/…): a "/" kezdetű hivatkozás a repó gyökeréhez képest értendő,
+   * a repóból kivezető hivatkozás változatlan marad.
+   */
   function resolveAssetUrl(docPath, src) {
     if (!src || /^[a-z][a-z0-9+.-]*:|^\/\/|^#/i.test(src)) return src;
     let s = src.split(/[?#]/)[0];
     try { s = decodeURIComponent(s); } catch { /* marad */ }
-    const p = normalizePath(s.startsWith('/') ? s : `${dirOf(docPath)}/${s}`);
-    return p === null ? src : '/assets/' + p.split('/').map(encodeURIComponent).join('/');
+    const root = docPath.split('/')[0];
+    const p = normalizePath(s.startsWith('/') ? `${root}/${s}` : `${dirOf(docPath)}/${s}`);
+    return p === null || !p.startsWith(`${root}/`) ? src : '/assets/' + p.split('/').map(encodeURIComponent).join('/');
   }
 
   // ---------- Emoji választó ----------
@@ -1356,7 +1596,10 @@
   }
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && layers.length) {
+    if (e.key === 'Escape' && !repoDlg.hidden) {
+      e.preventDefault();
+      closeRepoDialog();
+    } else if (e.key === 'Escape' && layers.length) {
       e.preventDefault();
       layers[layers.length - 1].close();
     } else if (e.key === '/' && !layers.length && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {

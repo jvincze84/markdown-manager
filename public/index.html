@@ -35,8 +35,9 @@
       </label>
     </div>
     <button id="new-file" class="btn" title="Új markdown fájl létrehozása">＋ Új fájl</button>
+    <button id="manage-repos" class="btn" title="Repók felvétele, módosítása, eltávolítása">⚙ Repók</button>
     <button id="theme-toggle" class="btn" title="Téma: automatikus"></button>
-    <button id="sync" class="btn primary" title="Letöltés a git repóból">⟳ Sync</button>
+    <button id="sync" class="btn primary" title="Az összes repó letöltése / frissítése">⟳ Sync</button>
   </header>
   <div id="status" class="statusbar">Betöltés…</div>
 
@@ -45,7 +46,16 @@
       <button id="filter-changed" class="btn toggle" title="Csak a módosított és új fájlok (szerkesztési branch-csel)">
         ✎ Módosított / új <span id="filter-count" class="count">0</span>
       </button>
-      <button id="clear-filters" class="btn" title="Keresőmezők és szűrő törlése" hidden>✕ Szűrők törlése</button>
+      <div class="repo-filter-wrap">
+        <button id="repo-filter" class="btn toggle" title="Csak a kiválasztott repók fájljai (fa, keresés, módosított lista)" hidden>
+          📦 Repó: <span id="repo-filter-label">mind</span> ▾
+        </button>
+        <div id="repo-menu" class="repo-menu" hidden>
+          <div id="repo-menu-list"></div>
+          <div class="repo-menu-foot"><button id="repo-menu-all" class="btn sm">Mind</button></div>
+        </div>
+      </div>
+      <button id="clear-filters" class="btn" title="Keresőmezők és szűrők törlése" hidden>✕ Szűrők törlése</button>
       <span class="toolbar-spacer"></span>
       <button id="expand-all" class="btn sm" title="Minden könyvtár kibontása">⊞ Mind kibont</button>
       <button id="collapse-all" class="btn sm" title="Minden könyvtár összecsukása">⊟ Mind összecsuk</button>
@@ -53,9 +63,7 @@
     <section id="results" class="results" hidden></section>
     <section id="changed" class="results" hidden></section>
     <section id="tree" class="tree"></section>
-    <div id="empty" class="empty" hidden>
-      Még nincs letöltött tartalom. Kattints a <b>⟳ Sync</b> gombra a repó letöltéséhez.
-    </div>
+    <div id="empty" class="empty" hidden></div>
   </main>
 
   <template id="layer-tpl">
@@ -68,6 +76,7 @@
             <div class="path"></div>
           </div>
           <label class="new-path" hidden>
+            <select class="new-path-repo" title="Repó"></select>
             <span class="new-path-prefix"></span>
             <input class="new-path-input" placeholder="konyvtar/fajlnev.md" autocomplete="off" spellcheck="false">
             <datalist class="new-path-dirs"></datalist>
@@ -141,6 +150,39 @@
       <div class="progress"><div class="bar"></div></div>
       <div class="sync-current"></div>
       <pre class="sync-log"></pre>
+    </div>
+  </div>
+
+  <div id="repo-dialog" class="sync-dialog repo-dialog" hidden>
+    <div class="sync-backdrop"></div>
+    <div class="sync-box">
+      <header>
+        <b>⚙ Repók</b>
+        <span class="muted repo-server"></span>
+        <button class="btn repo-close" title="Bezárás (Esc)">✕</button>
+      </header>
+      <div class="repo-body">
+        <table class="repo-table">
+          <thead><tr><th>Azonosító</th><th>Repó</th><th>Branch</th><th>Könyvtár</th><th>Képek</th><th>Állapot</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <form class="repo-form" autocomplete="off">
+          <h4 class="repo-form-title">Új repó felvétele</h4>
+          <div class="repo-grid">
+            <label>Repó útvonal a szerveren
+              <span class="repo-url"><span class="repo-url-prefix"></span><input name="path" placeholder="csoport/repo.git" spellcheck="false" required></span>
+            </label>
+            <label>Azonosító (a fa legfelső szintje)<input name="id" placeholder="automatikus" spellcheck="false" pattern="[a-z0-9][a-z0-9_\-]{0,39}"></label>
+            <label>Alap branch<input name="branch" spellcheck="false"></label>
+            <label>Könyvtár a repóban (üres = gyökér)<input name="docsPath" placeholder="docs" spellcheck="false"></label>
+            <label>Képek könyvtára<input name="assetsPath" placeholder="&lt;könyvtár&gt;/assets" spellcheck="false"></label>
+          </div>
+          <div class="repo-form-actions">
+            <button type="submit" class="btn primary repo-submit">＋ Felvétel és letöltés</button>
+            <button type="button" class="btn repo-cancel" hidden>Mégse</button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 
