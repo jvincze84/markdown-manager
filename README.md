@@ -39,7 +39,7 @@ még nincs felvett repó (`/data/repos.json`), akkor automatikusan átáll: a sz
 pedig első repóként felvételre kerül (`GIT_BRANCH`, `GIT_DOCS_PATH`, `GIT_ASSETS_PATH` alapján; az azonosító a repó
 nevéből képződik). A meglévő helyi másolat és a még nem mentett képfeltöltések átköltöznek, nem kell újra letölteni.
 Ezután a `.env`-ben a `GIT_URL` átírható a szerver címére, a `GIT_DOCS_PATH` / `GIT_ASSETS_PATH` törölhető.
-Visszalépés: a `v1.0.0` tag / `release/1.0` branch az egy-repós változat.
+Visszalépés: a `v1.0.0` tag / `release/1.0` branch az egy-repós változat (a több repós a `v2.0.0` / `release/2.0`).
 
 ## Működés
 

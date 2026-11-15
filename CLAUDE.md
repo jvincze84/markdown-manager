@@ -10,6 +10,12 @@ a pull requestet a felhasználó nyitja meg kézzel. A felhasználói dokumentá
 - Változtatás után futtasd a teszteket (`tests/run.sh`), és új funkcióhoz írj e2e tesztet a `tests/e2e/app.spec.js`-be.
 - Git: **csak lokális repó**, nincs remote – ne push-olj. Commitolni csak kérésre.
 
+## Verziók, release
+- Kiadott verziók: `v1.0.0` (+ `release/1.0` branch) – egy-repós változat; `v2.0.0` (+ `release/2.0`) – több repós változat.
+- Release menete (kérésre): `tests/run.sh` zöld → verzió emelés a `package.json`-ban **és** a `package-lock.json`
+  két helyén → commit → annotált tag (`git tag -a vX.Y.Z -m "vX.Y.Z – rövid leírás"`) → `release/X.Y` branch a tagre.
+- Főverzió, ha a beállítás (env / adatformátum) nem visszafelé kompatibilis; ilyenkor a README „Átállás” részét is frissítsd.
+
 ## Biztonsági követelmények (a felhasználó kifejezett kérései)
 - `GIT_URL` (a git **szerver** alap URL-je) és `GIT_TOKEN` **csak env változóból** jöhet; a felületről csak
   a repó *relatív* útvonala adható meg (`lib/repos.js` `checkRepoPath`: nincs séma/host, `..`, `-` kezdet). A token soha nem kerül lemezre: a git a
