@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Markdown Manager</title>
+  <link rel="stylesheet" id="md-css-light" href="/vendor/github-markdown-css/github-markdown-light.css">
+  <link rel="stylesheet" id="md-css-dark" href="/vendor/github-markdown-css/github-markdown-dark.css">
+  <link rel="stylesheet" href="/vendor/toastui/toastui-editor.css">
+  <link rel="stylesheet" href="/vendor/toastui/theme/toastui-editor-dark.css">
+  <link rel="stylesheet" href="/vendor/code-syntax-highlight/toastui-editor-plugin-code-syntax-highlight.css">
+  <link rel="stylesheet" href="/vendor/diff2html/css/diff2html.min.css">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/code-theme.css">
+  <script>
+    // Téma beállítása még a megjelenítés előtt (ne villanjon fel a világos téma)
+    (function () {
+      var pref = localStorage.getItem('theme') || 'auto';
+      var dark = pref === 'dark' || (pref === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      document.getElementById('md-css-light').disabled = dark;
+      document.getElementById('md-css-dark').disabled = !dark;
+    })();
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">📘 Markdown Manager</div>
+    <div class="search">
+      <label class="sfield" title="Fájlnév / útvonal szerinti keresés ( / )">
+        <span>📄</span><input id="search-name" type="search" placeholder="Fájlnév…  ( / )" autocomplete="off" spellcheck="false">
+      </label>
+      <label class="sfield" title="Keresés a fájlok tartalmában">
+        <span>🔍</span><input id="search-content" type="search" placeholder="Tartalom…" autocomplete="off">
+      </label>
+    </div>
+    <button id="new-file" class="btn" title="Új markdown fájl létrehozása">＋ Új fájl</button>
+    <button id="theme-toggle" class="btn" title="Téma: automatikus"></button>
+    <button id="sync" class="btn primary" title="Letöltés a git repóból">⟳ Sync</button>
+  </header>
+  <div id="status" class="statusbar">Betöltés…</div>
+
+  <main class="content">
+    <div class="toolbar">
+      <button id="filter-changed" class="btn toggle" title="Csak a módosított és új fájlok (szerkesztési branch-csel)">
+        ✎ Módosított / új <span id="filter-count" class="count">0</span>
+      </button>
+      <button id="clear-filters" class="btn" title="Keresőmezők és szűrő törlése" hidden>✕ Szűrők törlése</button>
+      <span class="toolbar-spacer"></span>
+      <button id="expand-all" class="btn sm" title="Minden könyvtár kibontása">⊞ Mind kibont</button>
+      <button id="collapse-all" class="btn sm" title="Minden könyvtár összecsukása">⊟ Mind összecsuk</button>
+    </div>
+    <section id="results" class="results" hidden></section>
+    <section id="changed" class="results" hidden></section>
+    <section id="tree" class="tree"></section>
+    <div id="empty" class="empty" hidden>
+      Még nincs letöltött tartalom. Kattints a <b>⟳ Sync</b> gombra a repó letöltéséhez.
+    </div>
+  </main>
+
+  <template id="layer-tpl">
+    <div class="layer">
+      <div class="layer-backdrop"></div>
+      <div class="layer-panel">
+        <header class="layer-header">
+          <div class="layer-title">
+            <div class="title"></div>
+            <div class="path"></div>
+          </div>
+          <label class="new-path" hidden>
+            <span class="new-path-prefix"></span>
+            <input class="new-path-input" placeholder="konyvtar/fajlnev.md" autocomplete="off" spellcheck="false">
+            <datalist class="new-path-dirs"></datalist>
+          </label>
+          <div class="layer-actions">
+            <div class="hit-nav" hidden title="Keresett szöveg (F3 / Shift+F3)">
+              <span class="hit-term"></span>
+              <span class="hit-count"></span>
+              <button class="hit-prev" title="Előző (Shift+F3)">‹</button>
+              <button class="hit-next" title="Következő (F3)">›</button>
+              <button class="hit-clear" title="Kijelölés törlése">✕</button>
+            </div>
+            <span class="badge new new-badge" hidden title="Ez a fájl még csak a szerkesztési branch-en létezik">új fájl</span>
+            <div class="seg source-toggle" hidden>
+              <button data-src="branch" title="A szerkesztési branch tartalma">✎ Módosított</button>
+              <button data-src="base" class="base-label">main</button>
+              <button data-src="diff" title="Változások az alap branch-hez képest">± Diff</button>
+            </div>
+            <a class="btn pr" target="_blank" rel="noopener" hidden>↗ Pull request</a>
+            <button class="btn danger discard" title="A szerkesztési branch törlése a szerverről (a módosítások / a törlés visszavonása)" hidden>↺ Eldobás</button>
+            <button class="btn danger delete" title="Fájl törlése: törlő commit a fájl saját branch-ére (PR után törlődik)" hidden>🗑 Törlés</button>
+            <select class="history" title="Korábbi változatok" hidden></select>
+            <button class="btn width" title="Olvasási szélesség: teljes / keskeny">↔ Szélesség</button>
+            <button class="btn edit">✎ Szerkesztés</button>
+            <input class="commit-msg" placeholder="Commit üzenet (opcionális)" hidden>
+            <button class="btn layout" title="Side-by-side / fülek" hidden>◫ Nézet</button>
+            <button class="btn primary save" hidden>💾 Mentés</button>
+            <button class="btn cancel" hidden>Mégse</button>
+            <button class="btn close" title="Bezárás (Esc)">✕</button>
+          </div>
+        </header>
+        <div class="layer-body">
+          <div class="view">
+            <div class="del-banner" hidden>
+              🗑 Ez a fájl <b>törlésre van jelölve</b> a(z) <code class="del-branch"></code> branch-en.
+              A pull request merge-e után törlődik. Visszavonás: <b>↺ Eldobás</b>.
+            </div>
+            <div class="rev-banner" hidden>
+              <span class="rev-info"></span>
+              <button class="btn sm rev-diff" title="A markdown forrás eltérései az aktuális változathoz képest">± Diff az aktuálishoz</button>
+              <button class="btn sm rev-back">↩ Vissza az aktuális változathoz</button>
+            </div>
+            <article class="markdown-body"></article>
+          </div>
+          <div class="editor" hidden></div>
+          <div class="diff-view" hidden>
+            <div class="diff-head">
+              <button class="btn sm diff-back" hidden>↩ Vissza a változathoz</button>
+              <div class="diff-info"></div>
+              <div class="seg diff-format">
+                <button data-fmt="side-by-side">◫ Egymás mellett</button>
+                <button data-fmt="line-by-line">☰ Egybefűzve</button>
+              </div>
+            </div>
+            <div class="diff-commits"></div>
+            <div class="diff-body"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <div id="sync-dialog" class="sync-dialog" hidden>
+    <div class="sync-backdrop"></div>
+    <div class="sync-box">
+      <header>
+        <b>⟳ Szinkronizálás</b>
+        <span class="sync-state"></span>
+        <button class="btn sync-close" title="Bezárás (a sync a háttérben folytatódik)">✕</button>
+      </header>
+      <div class="progress"><div class="bar"></div></div>
+      <div class="sync-current"></div>
+      <pre class="sync-log"></pre>
+    </div>
+  </div>
+
+  <div id="toasts" class="toasts"></div>
+
+  <script src="/vendor-built/toastui-editor-all.min.js"></script>
+  <script src="/mdtable.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

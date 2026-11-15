@@ -1,0 +1,7 @@
+{
+  "name": "markdown-manager-e2e",
+  "private": true,
+  "description": "Böngészős (Playwright) tesztek – a tests/run.sh futtatja Dockerben",
+  "scripts": { "test": "playwright test" },
+  "devDependencies": { "@playwright/test": "1.56.0" }
+}

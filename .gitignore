@@ -1,0 +1,13 @@
+# Titkok (GIT_TOKEN stb.) – soha ne kerüljön a repóba
+.env
+.env.*
+!.env.example
+
+# Függőségek, build- és teszttermékek
+node_modules/
+public/vendor-built/
+public-vendor/
+tests/e2e/test-results/
+tests/e2e/playwright-report/
+data/
+*.log

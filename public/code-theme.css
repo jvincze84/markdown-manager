@@ -1,0 +1,101 @@
+/*
+ * Kódszínezés témája (Prism tokenek) – a renderelt nézetben és az editor előnézetében/WYSIWYG módjában is.
+ * A paletta a Material for MkDocs világos témáján alapul, néhány Sublime-szerű kiegészítéssel
+ * (bash parancsok, kapcsolók, változók külön színnel).
+ */
+:root {
+  --code-bg: #f5f6f7;
+  --code-fg: #36464e;
+  --code-comment: #8b949e;
+  --code-punct: #6e7781;
+  --code-keyword: #3f6ec6;   /* kulcsszavak, YAML/JSON kulcsok, tagek */
+  --code-function: #a846b9;  /* függvények, parancsok */
+  --code-constant: #6e59d9;  /* true/false/null, osztálynevek, attribútumnevek */
+  --code-string: #1c7d4d;
+  --code-number: #d52a2a;
+  --code-special: #db1457;   /* változók, escape, regex, dekorátorok */
+  --code-param: #c45d00;     /* parancssori kapcsolók: -v, --rm */
+}
+
+/* Sötét téma: Material for MkDocs „slate” paletta */
+:root[data-theme="dark"] {
+  --code-bg: #1e2129;
+  --code-fg: #d5d9e8;
+  --code-comment: #7d8496;
+  --code-punct: #9aa3b5;
+  --code-keyword: #6791e0;
+  --code-function: #c973d9;
+  --code-constant: #9383e2;
+  --code-string: #2fb170;
+  --code-number: #e6695b;
+  --code-special: #f06090;
+  --code-param: #f0a35e;
+}
+:root[data-theme="dark"] :is(.markdown-body pre.code-hl, .toastui-editor-contents pre) .token.inserted { color: #3fb950; background: rgba(46,160,67,.15); }
+:root[data-theme="dark"] :is(.markdown-body pre.code-hl, .toastui-editor-contents pre) .token.deleted { color: #ff7b72; background: rgba(248,81,73,.15); }
+
+.markdown-body pre.code-hl,
+.toastui-editor-contents pre {
+  background: var(--code-bg);
+  color: var(--code-fg);
+  text-shadow: none;
+}
+/* A Toast UI kódszínező plugin CSS-e globálisan „pre[class*=language-] { overflow: visible }”-t állít,
+   ami a színezett blokkoknál kikapcsolná a vízszintes görgetést → hosszú sor kilógna a dobozból */
+.markdown-body pre.code-hl { overflow: auto; }
+.toastui-editor-contents pre[class*="language-"],
+.toastui-editor-contents pre[class*="lang-"] { overflow: auto; }
+
+.markdown-body pre.code-hl code,
+.toastui-editor-contents pre code { color: inherit; background: none; text-shadow: none; }
+
+:is(.markdown-body pre.code-hl, .toastui-editor-contents pre) .token {
+  background: none;
+  text-shadow: none;
+}
+
+/* Megjegyzések */
+:is(.markdown-body pre.code-hl, .toastui-editor-contents pre) :is(.token.comment, .token.prolog, .token.doctype, .token.cdata, .token.shebang) {
+  color: var(--code-comment); font-style: italic;
+}
+/* Írásjelek, operátorok */
+:is(.markdown-body pre.code-hl, .toastui-editor-contents pre) :is(.token.punctuation, .token.operator) { color: var(--code-punct); }
+/* Kulcsszavak, kulcsok */
+:is(.markdown-body pre.code-hl, .toastui-editor-contents pre) :is(.token.keyword, .token.atrule, .token.rule, .token.selector, .token.tag, .token.property, .token.key, .token.assign-left, .token.directive, .token.for-or-select) {
+  color: var(--code-keyword);
+}
+.markdown-body pre.code-hl .token.tag .token.punctuation,
+.toastui-editor-contents pre .token.tag .token.punctuation { color: var(--code-punct); }
+/* Függvények, parancsok, beépítettek */
+:is(.markdown-body pre.code-hl, .toastui-editor-contents pre) :is(.token.function, .token.function-name, .token.builtin, .token.method, .token.macro) {
+  color: var(--code-function);
+}
+:is(.markdown-body pre.code-hl, .toastui-editor-contents pre) .token.command { font-weight: 600; }
+/* Konstansok, osztálynevek */
+:is(.markdown-body pre.code-hl, .toastui-editor-contents pre) :is(.token.boolean, .token.constant, .token.null, .token.class-name, .token.attr-name, .token.symbol, .token.namespace, .token.important) {
+  color: var(--code-constant);
+}
+/* Szövegek */
+:is(.markdown-body pre.code-hl, .toastui-editor-contents pre) :is(.token.string, .token.char, .token.attr-value, .token.template-string, .token.url, .token.inserted-sign) {
+  color: var(--code-string);
+}
+/* Számok */
+:is(.markdown-body pre.code-hl, .toastui-editor-contents pre) :is(.token.number, .token.unit, .token.hexcode, .token.color) { color: var(--code-number); }
+/* Változók, escape, regex, dekorátorok */
+:is(.markdown-body pre.code-hl, .toastui-editor-contents pre) :is(.token.variable, .token.environment, .token.entity, .token.escape, .token.regex, .token.decorator, .token.annotation, .token.interpolation-punctuation, .token.anchor, .token.alias, .token.file-descriptor) {
+  color: var(--code-special);
+}
+/* Bash kapcsolók (-v, --rm) – a Prism „parameter variable” tokenje */
+:is(.markdown-body pre.code-hl, .toastui-editor-contents pre) .token.parameter { color: var(--code-param); }
+/* Bash: $( ) és ${ } belseje maradjon olvasható */
+:is(.markdown-body pre.code-hl, .toastui-editor-contents pre) .token.variable .token.punctuation { color: var(--code-special); }
+/* SQL / Python stb. típusok */
+:is(.markdown-body pre.code-hl, .toastui-editor-contents pre) .token.builtin.class-name { color: var(--code-function); }
+/* Diff */
+:is(.markdown-body pre.code-hl, .toastui-editor-contents pre) .token.inserted { color: #116329; background: #dafbe1; }
+:is(.markdown-body pre.code-hl, .toastui-editor-contents pre) .token.deleted { color: #82071e; background: #ffebe9; }
+:is(.markdown-body pre.code-hl, .toastui-editor-contents pre) .token.coord { color: var(--code-keyword); }
+/* Markdown */
+:is(.markdown-body pre.code-hl, .toastui-editor-contents pre) .token.title { color: var(--code-keyword); font-weight: 600; }
+:is(.markdown-body pre.code-hl, .toastui-editor-contents pre) .token.bold { font-weight: 600; }
+:is(.markdown-body pre.code-hl, .toastui-editor-contents pre) .token.italic { font-style: italic; }

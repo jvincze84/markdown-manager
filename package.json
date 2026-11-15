@@ -1,0 +1,26 @@
+{
+  "name": "markdown-manager",
+  "version": "1.0.0",
+  "description": "Markdown fájlok megjelenítése, keresése és szerkesztése Git repóból",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@toast-ui/editor": "^3.2.2",
+    "@toast-ui/editor-plugin-code-syntax-highlight": "^3.1.0",
+    "diff2html": "^3.4.51",
+    "express": "^4.21.2",
+    "github-markdown-css": "^5.8.1",
+    "markdown-it": "^14.1.0",
+    "markdown-it-anchor": "^9.2.0",
+    "markdown-it-task-lists": "^2.1.1",
+    "mermaid": "^11.4.1",
+    "minisearch": "^7.1.1",
+    "prismjs": "^1.30.0"
+  },
+  "devDependencies": {
+    "emojibase-data": "^18.0.0"
+  }
+}

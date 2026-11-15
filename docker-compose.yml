@@ -1,0 +1,14 @@
+services:
+  markdown-manager:
+    build: .
+    image: markdown-manager:latest
+    container_name: markdown-manager
+    restart: unless-stopped
+    ports:
+      - "18083:8080"
+    env_file: .env
+    volumes:
+      - md-data:/data
+
+volumes:
+  md-data:
