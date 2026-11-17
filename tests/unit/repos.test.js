@@ -33,7 +33,7 @@ test('repó útvonal, branch, könyvtár ellenőrzése', () => {
   for (const bad of ['-x', 'a..b', 'x.lock', '/x', 'x/', 'a b', '.x']) assert.throws(() => repos.checkBranch(bad), undefined, bad);
   assert.strictEqual(repos.checkDir('/docs/guide/'), 'docs/guide');
   assert.strictEqual(repos.checkDir(''), '');
-  for (const bad of ['../x', 'a/.git', 'a//b']) assert.throws(() => repos.checkDir(bad, 'könyvtár'), undefined, bad);
+  for (const bad of ['../x', 'a/.git', 'a//b']) assert.throws(() => repos.checkDir(bad, 'folder'), undefined, bad);
 });
 
 test('normalize: azonosító javaslat, alapértékek, egyediség', () => {
@@ -42,12 +42,34 @@ test('normalize: azonosító javaslat, alapértékek, egyediség', () => {
   const r = repos.normalize({ path: 'csoport/Kezikonyv.git', docsPath: 'docs' });
   assert.deepStrictEqual(r, { id: 'kezikonyv', path: 'csoport/Kezikonyv.git', branch: 'master', docsPath: 'docs', assetsPath: 'docs/assets' });
   assert.strictEqual(repos.normalize({ path: 'x.git' }).assetsPath, 'assets');
-  assert.throws(() => repos.normalize({ path: 'masik/kezikonyv.git' }, [r]), /azonosítójú/);
-  assert.throws(() => repos.normalize({ path: 'csoport/kezikonyv', id: 'k2' }, [r]), /már fel van véve/);
-  assert.throws(() => repos.normalize({ path: 'x.git', id: 'Nagy Betű' }), /azonosító/);
+  assert.throws(() => repos.normalize({ path: 'masik/kezikonyv.git' }, [r]), /ID already exists/);
+  assert.throws(() => repos.normalize({ path: 'csoport/kezikonyv', id: 'k2' }, [r]), /already been added/); // gyökér ⊃ docs
+  assert.throws(() => repos.normalize({ path: 'x.git', id: 'Nagy Betű' }), /Invalid ID/);
   // szerkesztésnél az azonosító és az útvonal nem változik
   const e = repos.normalize({ path: 'mas.git', id: 'mas', branch: 'dev' }, [r], { editing: r });
   assert.deepStrictEqual([e.id, e.path, e.branch, e.docsPath], ['kezikonyv', 'csoport/Kezikonyv.git', 'dev', '']);
+});
+
+test('ugyanaz a repó több könyvtárral: csak egymást nem átfedő könyvtárak', () => {
+  const docs = repos.normalize({ path: 'g/kb.git', id: 'kb', docsPath: 'docs' });
+  const list = [docs];
+  // külön könyvtár: felvehető (a .git végződés és a kis/nagybetű nem számít a repó azonosításában)
+  const wiki = repos.normalize({ path: 'g/KB', id: 'kb-wiki', docsPath: 'wiki' }, list);
+  assert.strictEqual(wiki.docsPath, 'wiki');
+  assert.ok(repos.normalize({ path: 'g/kb.git', id: 'kb2', docsPath: 'docs2' }, list)); // „docs2” nem a „docs” alatt van
+  list.push(wiki);
+  for (const docsPath of ['docs', '/docs/', 'docs/masik', 'docs/a/b', '', 'wiki/x']) {
+    assert.throws(() => repos.normalize({ path: 'g/kb.git', id: 'uj', docsPath }, list), /already been added as/, docsPath);
+  }
+  // gyökérrel felvett repó mellé semmi nem vehető fel
+  const root = [repos.normalize({ path: 'g/r.git', id: 'r' })];
+  assert.throws(() => repos.normalize({ path: 'g/r.git', id: 'r2', docsPath: 'docs' }, root), /already been added as “r”/);
+  // más repóban ugyanaz a könyvtár nem számít
+  assert.ok(repos.normalize({ path: 'g/masik.git', id: 'm', docsPath: 'docs' }, list));
+  // szerkesztés: a saját könyvtárát szabadon módosíthatja, de nem fedheti át a másik bejegyzést
+  assert.strictEqual(repos.normalize({ docsPath: 'docs/uj' }, list, { editing: docs }).docsPath, 'docs/uj');
+  assert.throws(() => repos.normalize({ docsPath: 'wiki/a' }, list, { editing: docs }), /“kb-wiki”/);
+  assert.throws(() => repos.normalize({ docsPath: '' }, list, { editing: docs }), /“kb-wiki”/);
 });
 
 test('régi beállítás átvétele: első repó + klón és feltöltések átköltöztetése', async () => {

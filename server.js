@@ -121,7 +121,7 @@ function assetName(original, data, mime) {
   if (!ext) return null;
   const base = path.posix.basename(original || '', path.extname(original || ''))
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-').replace(/^[-.]+|[-.]+$/g, '').slice(0, 60) || 'kep';
+    .replace(/[^a-z0-9._-]+/g, '-').replace(/^[-.]+|[-.]+$/g, '').slice(0, 60) || 'image';
   const hash = crypto.createHash('sha1').update(data).digest('hex').slice(0, 8);
   return `${base}-${hash}.${ext === 'jpeg' ? 'jpg' : ext}`;
 }
@@ -193,13 +193,13 @@ async function refreshLocal(ctx) {
 /** Új fájl útvonalának ellenőrzése (a repó könyvtárához relatív bemenet → repo-relatív útvonal). */
 function newFilePath(ctx, input) {
   let p = String(input || '').trim().replace(/\\/g, '/').replace(/^\/+/, '');
-  if (!p) throw httpError(400, 'Add meg a fájl nevét.');
+  if (!p) throw httpError(400, 'Enter a file name.');
   if (!/\.(md|markdown)$/i.test(p)) p += '.md';
   const n = path.posix.normalize(p);
   if (n.startsWith('..') || n.split('/').some((seg) => !seg || seg.startsWith('.'))) {
-    throw httpError(400, `Érvénytelen útvonal: ${input}`);
+    throw httpError(400, `Invalid path: ${input}`);
   }
-  if (/[\x00-\x1f\\:*?"<>|]/.test(n)) throw httpError(400, `Nem megengedett karakter az útvonalban: ${input}`);
+  if (/[\x00-\x1f\\:*?"<>|]/.test(n)) throw httpError(400, `Invalid character in path: ${input}`);
   return ctx.cfg.docsPath ? `${ctx.cfg.docsPath}/${n}` : n;
 }
 
@@ -239,7 +239,7 @@ const status = () => {
 function docOf(p) {
   const doc = docs.get(p);
   const r = resolve(p);
-  if (!doc || !r) throw httpError(404, `Nem található: ${p}`);
+  if (!doc || !r) throw httpError(404, `Not found: ${p}`);
   return { doc, ...r };
 }
 
@@ -263,7 +263,7 @@ app.get('/api/status', (req, res) => res.json(status()));
 const job = { id: 0, running: false, lines: [], progress: '', error: null, ok: false };
 
 function jobLog(msg) {
-  const t = new Date().toLocaleTimeString('hu-HU');
+  const t = new Date().toLocaleTimeString('en-GB');
   if (job.progress) job.lines.push(`  ${job.progress}`); // utolsó progress sor megtartása a naplóban
   job.progress = '';
   job.lines.push(`[${t}] ${msg}`);
@@ -276,22 +276,22 @@ async function syncRepo(ctx, log) {
   try {
     const head = await ctx.git.sync(log);
     jobLog(`HEAD: ${head.commit} – ${head.subject}`);
-    jobLog('Markdown fájlok feldolgozása (renderelés, keresési index)…');
+    jobLog('Processing markdown files (rendering, search index)…');
     await docs.rebuild(ctx.repo);
-    jobLog(`${docs.count(ctx.id)} markdown fájl feldolgozva.`);
-    jobLog('Szerkesztési branchek beolvasása…');
+    jobLog(`${docs.count(ctx.id)} markdown files processed.`);
+    jobLog('Reading edit branches…');
     await refreshBranches(ctx);
     const newCount = docs.list(ctx.id).filter((f) => f.isNew).length;
-    jobLog(`${ctx.state.editBranches.size} szerkesztési branch, ebből ${newCount} új fájl.`);
+    jobLog(`${ctx.state.editBranches.size} edit branches, ${newCount} of them new files.`);
     ctx.state.head = await ctx.git.headInfo();
-    jobLog('Fájlonkénti commit adatok (utolsó módosítás)…');
+    jobLog('Per-file commit data (last change)…');
     ctx.state.fileCommits = await ctx.git.fileCommits();
     ctx.state.lastSync = new Date().toISOString();
     ctx.state.error = null;
     return true;
   } catch (e) {
     ctx.state.error = e.message;
-    jobLog(`HIBA (${ctx.id}): ${e.message}`);
+    jobLog(`ERROR (${ctx.id}): ${e.message}`);
     return false;
   }
 }
@@ -306,19 +306,19 @@ async function runSync(ids = null) {
     const failed = [];
     await exclusive(async () => {
       const list = [...repos.values()].filter((c) => !ids || ids.includes(c.id));
-      if (!list.length) throw new Error('Nincs felvett repó. Vegyél fel egyet a „⚙ Repók” gombbal.');
-      jobLog(`Szinkronizálás indul: ${list.length} repó (${serverLabel()})`);
+      if (!list.length) throw new Error('No repositories. Add one with the “⚙ Repos” button.');
+      jobLog(`Sync started: ${list.length} ${list.length === 1 ? 'repository' : 'repositories'} (${serverLabel()})`);
       for (const ctx of list) if (!(await syncRepo(ctx, log))) failed.push(ctx.id);
       await cleanupUploads();
       await saveLastSync();
     });
-    if (failed.length) throw new Error(`Sikertelen: ${failed.join(', ')}`);
+    if (failed.length) throw new Error(`Failed: ${failed.join(', ')}`);
     state.error = null;
-    jobLog(`Kész (${((Date.now() - started) / 1000).toFixed(1)} s).`);
+    jobLog(`Done (${((Date.now() - started) / 1000).toFixed(1)} s).`);
     job.ok = true;
   } catch (e) {
     job.error = e.message;
-    jobLog(`HIBA: ${e.message}`);
+    jobLog(`ERROR: ${e.message}`);
   } finally {
     state.syncing = false;
     job.running = false;
@@ -334,7 +334,7 @@ function startSync(ids) {
 
 app.post('/api/sync', (req, res) => {
   const ids = Array.isArray(req.body?.repos) ? req.body.repos.map(String).filter((id) => repos.has(id)) : null;
-  if (!startSync(ids)) return res.status(409).json({ error: 'A szinkronizálás már folyamatban van.', id: job.id });
+  if (!startSync(ids)) return res.status(409).json({ error: 'A sync is already running.', id: job.id });
   res.status(202).json({ id: job.id });
 });
 
@@ -357,8 +357,8 @@ app.get('/api/repos', (req, res) => res.json(status().repos));
 
 // Új repó felvétele, majd azonnali sync (csak ez a repó)
 app.post('/api/repos', wrap(async (req, res) => {
-  if (!cfg.serverUrl) throw httpError(400, 'A GIT_URL környezeti változó nincs beállítva.');
-  if (state.syncing) throw httpError(409, 'Szinkronizálás folyamatban – várd meg a végét.');
+  if (!cfg.serverUrl) throw httpError(400, 'The GIT_URL environment variable is not set.');
+  if (state.syncing) throw httpError(409, 'A sync is running – wait for it to finish.');
   const ctx = await exclusive(async () => {
     let r;
     try { r = reposLib.normalize(req.body || {}, repoList()); } catch (e) { throw httpError(400, e.message); }
@@ -375,8 +375,8 @@ app.post('/api/repos', wrap(async (req, res) => {
 // Repó beállításainak módosítása (azonosító és útvonal nem változtatható), majd újra-sync
 app.put('/api/repos/:id', wrap(async (req, res) => {
   const old = repos.get(req.params.id);
-  if (!old) throw httpError(404, `Nincs ilyen repó: ${req.params.id}`);
-  if (state.syncing) throw httpError(409, 'Szinkronizálás folyamatban – várd meg a végét.');
+  if (!old) throw httpError(404, `No such repository: ${req.params.id}`);
+  if (state.syncing) throw httpError(409, 'A sync is running – wait for it to finish.');
   const ctx = await exclusive(async () => {
     let r;
     try { r = reposLib.normalize(req.body || {}, repoList(), { editing: old.cfg }); } catch (e) { throw httpError(400, e.message); }
@@ -392,7 +392,7 @@ app.put('/api/repos/:id', wrap(async (req, res) => {
 // Repó eltávolítása az appból (a helyi klón és a mentetlen feltöltések törlődnek; a szerveren semmi nem változik)
 app.delete('/api/repos/:id', wrap(async (req, res) => {
   const ctx = repos.get(req.params.id);
-  if (!ctx) throw httpError(404, `Nincs ilyen repó: ${req.params.id}`);
+  if (!ctx) throw httpError(404, `No such repository: ${req.params.id}`);
   await exclusive(async () => {
     repos.delete(ctx.id);
     await saveRepos();
@@ -449,11 +449,11 @@ app.get('/api/file', wrap(async (req, res) => {
   if (req.query.rev) {
     // Korábbi változat (előzmények lenyíló)
     rev = String(req.query.rev);
-    if (!/^[0-9a-f]{7,40}$/i.test(rev)) throw httpError(400, 'Érvénytelen commit azonosító.');
+    if (!/^[0-9a-f]{7,40}$/i.test(rev)) throw httpError(400, 'Invalid commit id.');
     try {
       content = await exclusive(() => ctx.git.showFile(rev, rel));
     } catch {
-      throw httpError(404, `A fájl nem létezik ebben a változatban: ${rev.slice(0, 7)}`);
+      throw httpError(404, `The file does not exist in this version: ${rev.slice(0, 7)}`);
     }
     html = docs.render(content, p);
     source = 'rev';
@@ -497,11 +497,11 @@ app.delete('/api/file', wrap(async (req, res) => {
 app.post('/api/upload', express.raw({ type: () => true, limit: '20mb' }), wrap(async (req, res) => {
   const doc = safeRepoPath(req.query.doc);
   const r = doc && resolve(doc);
-  if (!r) throw httpError(400, 'Hiányzó vagy érvénytelen dokumentum útvonal.');
+  if (!r) throw httpError(400, 'Missing or invalid document path.');
   const data = req.body;
-  if (!Buffer.isBuffer(data) || !data.length) throw httpError(400, 'Üres fájl.');
+  if (!Buffer.isBuffer(data) || !data.length) throw httpError(400, 'Empty file.');
   const name = assetName(String(req.query.name || ''), data, String(req.headers['content-type'] || '').split(';')[0]);
-  if (!name) throw httpError(415, `Nem támogatott képformátum (${Object.keys(IMAGE_TYPES).join(', ')}).`);
+  if (!name) throw httpError(415, `Unsupported image format (${Object.keys(IMAGE_TYPES).join(', ')}).`);
   const vp = `${r.ctx.id}/${r.ctx.cfg.assetsPath ? `${r.ctx.cfg.assetsPath}/` : ''}${name}`;
   const target = path.join(uploadsDir, vp);
   await fs.mkdir(path.dirname(target), { recursive: true });
@@ -513,7 +513,7 @@ app.post('/api/upload', express.raw({ type: () => true, limit: '20mb' }), wrap(a
 app.put('/api/file', wrap(async (req, res) => {
   const { path: p, content, message } = req.body || {};
   const { ctx, rel } = docOf(p);
-  if (typeof content !== 'string') throw httpError(400, 'Hiányzó tartalom.');
+  if (typeof content !== 'string') throw httpError(400, 'Missing content.');
   const result = await exclusive(async () => {
     const r = await ctx.git.saveFile(rel, content, message, await pendingAssets(p, content));
     await refreshBranches(ctx);
@@ -537,12 +537,12 @@ app.get('/api/diff', wrap(async (req, res) => {
   if (req.query.rev) {
     // Korábbi változat ↔ aktuális változat (szerkesztési branch, ha van; különben az alap branch)
     const rev = String(req.query.rev);
-    if (!/^[0-9a-f]{7,40}$/i.test(rev)) throw httpError(400, 'Érvénytelen commit azonosító.');
+    if (!/^[0-9a-f]{7,40}$/i.test(rev)) throw httpError(400, 'Invalid commit id.');
     const target = editBranch || baseBranch;
     const r = await exclusive(() => ctx.git.revDiff(rel, rev, `origin/${target}`));
     return res.json({ ...r, path: p, rev, target, onBranch: Boolean(editBranch), baseBranch });
   }
-  if (!editBranch) throw httpError(404, 'Ehhez a fájlhoz nincs szerkesztési branch.');
+  if (!editBranch) throw httpError(404, 'This file has no edit branch.');
   const r = await exclusive(() => ctx.git.diffFile(rel));
   res.json({ ...r, path: p, baseBranch, prUrl: ctx.git.pullRequestUrl(r.branch) });
 }));
@@ -551,7 +551,7 @@ app.get('/api/diff', wrap(async (req, res) => {
 app.delete('/api/branch', wrap(async (req, res) => {
   const p = String(req.query.path || '');
   const { doc, ctx, rel } = docOf(p);
-  if (!editBranchOf(ctx, rel)) throw httpError(404, 'Ehhez a fájlhoz nincs szerkesztési branch.');
+  if (!editBranchOf(ctx, rel)) throw httpError(404, 'This file has no edit branch.');
   const wasNew = Boolean(doc.isNew);
   const r = await exclusive(async () => {
     const out = await ctx.git.deleteBranch(rel);
@@ -565,13 +565,13 @@ app.delete('/api/branch', wrap(async (req, res) => {
 // Bemenet: repo (azonosító) + path (a repó könyvtárához relatív útvonal).
 app.post('/api/file', wrap(async (req, res) => {
   const { repo: id, path: input, content, message } = req.body || {};
-  if (typeof content !== 'string') throw httpError(400, 'Hiányzó tartalom.');
+  if (typeof content !== 'string') throw httpError(400, 'Missing content.');
   const ctx = repos.get(String(id || ''));
-  if (!ctx) throw httpError(400, 'Válaszd ki a repót.');
-  if (!(await ctx.git.isRepo())) throw httpError(400, 'Előbb futtasd a Sync-et.');
+  if (!ctx) throw httpError(400, 'Select a repository.');
+  if (!(await ctx.git.isRepo())) throw httpError(400, 'Run Sync first.');
   const rel = newFilePath(ctx, input);
   const p = `${ctx.id}/${rel}`;
-  if (docs.get(p)) throw httpError(409, `Már létezik: ${p}`);
+  if (docs.get(p)) throw httpError(409, `Already exists: ${p}`);
   const result = await exclusive(async () => {
     const r = await ctx.git.saveFile(rel, content, (message && message.trim()) || `Add ${rel}`, await pendingAssets(p, content));
     await refreshBranches(ctx);
@@ -586,17 +586,17 @@ app.post('/api/file', wrap(async (req, res) => {
   await fs.mkdir(cfg.reposDir, { recursive: true });
   try {
     const n = await git.setupCustomCA();
-    if (n) console.log(`Egyedi CA bundle betöltve: ${n} tanúsítvány.`);
+    if (n) console.log(`Custom CA bundle loaded: ${n} certificates.`);
   } catch (e) {
     state.error = e.message;
-    console.error('CA bundle hiba:', e.message);
+    console.error('CA bundle error:', e.message);
   }
   let list = [];
   try {
     list = await reposLib.loadOrMigrate();
   } catch (e) {
     state.error = e.message;
-    console.error('Repó lista betöltése sikertelen:', e.message);
+    console.error('Failed to load the repository list:', e.message);
   }
   let lastSync = await fs.readFile(lastSyncFile, 'utf8').then(JSON.parse).catch(() => null);
   if (!lastSync && list.length === 1) {
@@ -611,12 +611,12 @@ app.post('/api/file', wrap(async (req, res) => {
     try {
       await refreshLocal(ctx);
       ctx.state.lastSync = lastSync?.[r.id] || null;
-      console.log(`Helyi repó betöltve: ${r.id} – ${docs.count(r.id)} markdown fájl.`);
+      console.log(`Local repository loaded: ${r.id} – ${docs.count(r.id)} markdown files.`);
     } catch (e) {
       ctx.state.error = e.message;
-      console.error(`Helyi repó betöltése sikertelen (${r.id}):`, e.message);
+      console.error(`Failed to load local repository (${r.id}):`, e.message);
     }
   }
-  if (!cfg.serverUrl) console.warn('FIGYELEM: GIT_URL nincs beállítva.');
+  if (!cfg.serverUrl) console.warn('WARNING: GIT_URL is not set.');
   app.listen(cfg.port, () => console.log(`Markdown Manager: http://0.0.0.0:${cfg.port}`));
 })();

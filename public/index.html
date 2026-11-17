@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="hu">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -27,38 +27,38 @@
   <header class="topbar">
     <div class="brand">📘 Markdown Manager</div>
     <div class="search">
-      <label class="sfield" title="Fájlnév / útvonal szerinti keresés ( / )">
-        <span>📄</span><input id="search-name" type="search" placeholder="Fájlnév…  ( / )" autocomplete="off" spellcheck="false">
+      <label class="sfield" title="Search by file name / path ( / )">
+        <span>📄</span><input id="search-name" type="search" placeholder="File name…  ( / )" autocomplete="off" spellcheck="false">
       </label>
-      <label class="sfield" title="Keresés a fájlok tartalmában">
-        <span>🔍</span><input id="search-content" type="search" placeholder="Tartalom…" autocomplete="off">
+      <label class="sfield" title="Search in file contents. Every word must occur; text in quotes (&quot;…&quot;) is an exact phrase.">
+        <span>🔍</span><input id="search-content" type="search" placeholder='Content…  ("exact phrase")' autocomplete="off">
       </label>
     </div>
-    <button id="new-file" class="btn" title="Új markdown fájl létrehozása">＋ Új fájl</button>
-    <button id="manage-repos" class="btn" title="Repók felvétele, módosítása, eltávolítása">⚙ Repók</button>
-    <button id="theme-toggle" class="btn" title="Téma: automatikus"></button>
-    <button id="sync" class="btn primary" title="Az összes repó letöltése / frissítése">⟳ Sync</button>
+    <button id="new-file" class="btn" title="Create a new markdown file">＋ New file</button>
+    <button id="manage-repos" class="btn" title="Add, edit, remove repositories">⚙ Repos</button>
+    <button id="theme-toggle" class="btn" title="Theme: auto"></button>
+    <button id="sync" class="btn primary" title="Download / update all repositories">⟳ Sync</button>
   </header>
-  <div id="status" class="statusbar">Betöltés…</div>
+  <div id="status" class="statusbar">Loading…</div>
 
   <main class="content">
     <div class="toolbar">
-      <button id="filter-changed" class="btn toggle" title="Csak a módosított és új fájlok (szerkesztési branch-csel)">
-        ✎ Módosított / új <span id="filter-count" class="count">0</span>
+      <button id="filter-changed" class="btn toggle" title="Only modified and new files (with an edit branch)">
+        ✎ Modified / new <span id="filter-count" class="count">0</span>
       </button>
       <div class="repo-filter-wrap">
-        <button id="repo-filter" class="btn toggle" title="Csak a kiválasztott repók fájljai (fa, keresés, módosított lista)" hidden>
-          📦 Repó: <span id="repo-filter-label">mind</span> ▾
+        <button id="repo-filter" class="btn toggle" title="Only files of the selected repositories (tree, search, modified list)" hidden>
+          📦 Repo: <span id="repo-filter-label">all</span> ▾
         </button>
         <div id="repo-menu" class="repo-menu" hidden>
           <div id="repo-menu-list"></div>
-          <div class="repo-menu-foot"><button id="repo-menu-all" class="btn sm">Mind</button></div>
+          <div class="repo-menu-foot"><button id="repo-menu-all" class="btn sm">All</button></div>
         </div>
       </div>
-      <button id="clear-filters" class="btn" title="Keresőmezők és szűrők törlése" hidden>✕ Szűrők törlése</button>
+      <button id="clear-filters" class="btn" title="Clear search fields and filters" hidden>✕ Clear filters</button>
       <span class="toolbar-spacer"></span>
-      <button id="expand-all" class="btn sm" title="Minden könyvtár kibontása">⊞ Mind kibont</button>
-      <button id="collapse-all" class="btn sm" title="Minden könyvtár összecsukása">⊟ Mind összecsuk</button>
+      <button id="expand-all" class="btn sm" title="Expand all folders">⊞ Expand all</button>
+      <button id="collapse-all" class="btn sm" title="Collapse all folders">⊟ Collapse all</button>
     </div>
     <section id="results" class="results" hidden></section>
     <section id="changed" class="results" hidden></section>
@@ -76,59 +76,59 @@
             <div class="path"></div>
           </div>
           <label class="new-path" hidden>
-            <select class="new-path-repo" title="Repó"></select>
+            <select class="new-path-repo" title="Repository"></select>
             <span class="new-path-prefix"></span>
-            <input class="new-path-input" placeholder="konyvtar/fajlnev.md" autocomplete="off" spellcheck="false">
+            <input class="new-path-input" placeholder="folder/file-name.md" autocomplete="off" spellcheck="false">
             <datalist class="new-path-dirs"></datalist>
           </label>
           <div class="layer-actions">
-            <div class="hit-nav" hidden title="Keresett szöveg (F3 / Shift+F3)">
+            <div class="hit-nav" hidden title="Search term (F3 / Shift+F3)">
               <span class="hit-term"></span>
               <span class="hit-count"></span>
-              <button class="hit-prev" title="Előző (Shift+F3)">‹</button>
-              <button class="hit-next" title="Következő (F3)">›</button>
-              <button class="hit-clear" title="Kijelölés törlése">✕</button>
+              <button class="hit-prev" title="Previous (Shift+F3)">‹</button>
+              <button class="hit-next" title="Next (F3)">›</button>
+              <button class="hit-clear" title="Clear highlight">✕</button>
             </div>
-            <span class="badge new new-badge" hidden title="Ez a fájl még csak a szerkesztési branch-en létezik">új fájl</span>
+            <span class="badge new new-badge" hidden title="This file exists only on its edit branch so far">new file</span>
             <div class="seg source-toggle" hidden>
-              <button data-src="branch" title="A szerkesztési branch tartalma">✎ Módosított</button>
+              <button data-src="branch" title="Content of the edit branch">✎ Modified</button>
               <button data-src="base" class="base-label">main</button>
-              <button data-src="diff" title="Változások az alap branch-hez képest">± Diff</button>
+              <button data-src="diff" title="Changes compared to the base branch">± Diff</button>
             </div>
             <a class="btn pr" target="_blank" rel="noopener" hidden>↗ Pull request</a>
-            <button class="btn danger discard" title="A szerkesztési branch törlése a szerverről (a módosítások / a törlés visszavonása)" hidden>↺ Eldobás</button>
-            <button class="btn danger delete" title="Fájl törlése: törlő commit a fájl saját branch-ére (PR után törlődik)" hidden>🗑 Törlés</button>
-            <select class="history" title="Korábbi változatok" hidden></select>
-            <button class="btn width" title="Olvasási szélesség: teljes / keskeny">↔ Szélesség</button>
-            <button class="btn edit">✎ Szerkesztés</button>
-            <input class="commit-msg" placeholder="Commit üzenet (opcionális)" hidden>
-            <button class="btn layout" title="Side-by-side / fülek" hidden>◫ Nézet</button>
-            <button class="btn primary save" hidden>💾 Mentés</button>
-            <button class="btn cancel" hidden>Mégse</button>
-            <button class="btn close" title="Bezárás (Esc)">✕</button>
+            <button class="btn danger discard" title="Delete the edit branch from the server (reverts the changes / the deletion)" hidden>↺ Discard</button>
+            <button class="btn danger delete" title="Delete file: a deleting commit on the file's own branch (removed after the PR is merged)" hidden>🗑 Delete</button>
+            <select class="history" title="Earlier versions" hidden></select>
+            <button class="btn width" title="Reading width: full / narrow">↔ Width</button>
+            <button class="btn edit">✎ Edit</button>
+            <input class="commit-msg" placeholder="Commit message (optional)" hidden>
+            <button class="btn layout" title="Side-by-side / tabs" hidden>◫ Layout</button>
+            <button class="btn primary save" hidden>💾 Save</button>
+            <button class="btn cancel" hidden>Cancel</button>
+            <button class="btn close" title="Close (Esc)">✕</button>
           </div>
         </header>
         <div class="layer-body">
           <div class="view">
             <div class="del-banner" hidden>
-              🗑 Ez a fájl <b>törlésre van jelölve</b> a(z) <code class="del-branch"></code> branch-en.
-              A pull request merge-e után törlődik. Visszavonás: <b>↺ Eldobás</b>.
+              🗑 This file is <b>marked for deletion</b> on the <code class="del-branch"></code> branch.
+              It will be deleted when the pull request is merged. To undo: <b>↺ Discard</b>.
             </div>
             <div class="rev-banner" hidden>
               <span class="rev-info"></span>
-              <button class="btn sm rev-diff" title="A markdown forrás eltérései az aktuális változathoz képest">± Diff az aktuálishoz</button>
-              <button class="btn sm rev-back">↩ Vissza az aktuális változathoz</button>
+              <button class="btn sm rev-diff" title="Markdown source differences compared to the current version">± Diff to current</button>
+              <button class="btn sm rev-back">↩ Back to the current version</button>
             </div>
             <article class="markdown-body"></article>
           </div>
           <div class="editor" hidden></div>
           <div class="diff-view" hidden>
             <div class="diff-head">
-              <button class="btn sm diff-back" hidden>↩ Vissza a változathoz</button>
+              <button class="btn sm diff-back" hidden>↩ Back to the version</button>
               <div class="diff-info"></div>
               <div class="seg diff-format">
-                <button data-fmt="side-by-side">◫ Egymás mellett</button>
-                <button data-fmt="line-by-line">☰ Egybefűzve</button>
+                <button data-fmt="side-by-side">◫ Side by side</button>
+                <button data-fmt="line-by-line">☰ Unified</button>
               </div>
             </div>
             <div class="diff-commits"></div>
@@ -143,9 +143,9 @@
     <div class="sync-backdrop"></div>
     <div class="sync-box">
       <header>
-        <b>⟳ Szinkronizálás</b>
+        <b>⟳ Synchronization</b>
         <span class="sync-state"></span>
-        <button class="btn sync-close" title="Bezárás (a sync a háttérben folytatódik)">✕</button>
+        <button class="btn sync-close" title="Close (sync continues in the background)">✕</button>
       </header>
       <div class="progress"><div class="bar"></div></div>
       <div class="sync-current"></div>
@@ -157,29 +157,29 @@
     <div class="sync-backdrop"></div>
     <div class="sync-box">
       <header>
-        <b>⚙ Repók</b>
+        <b>⚙ Repositories</b>
         <span class="muted repo-server"></span>
-        <button class="btn repo-close" title="Bezárás (Esc)">✕</button>
+        <button class="btn repo-close" title="Close (Esc)">✕</button>
       </header>
       <div class="repo-body">
         <table class="repo-table">
-          <thead><tr><th>Azonosító</th><th>Repó</th><th>Branch</th><th>Könyvtár</th><th>Képek</th><th>Állapot</th><th></th></tr></thead>
+          <thead><tr><th>ID</th><th>Repository</th><th>Branch</th><th>Folder</th><th>Images</th><th>Status</th><th></th></tr></thead>
           <tbody></tbody>
         </table>
         <form class="repo-form" autocomplete="off">
-          <h4 class="repo-form-title">Új repó felvétele</h4>
+          <h4 class="repo-form-title">Add a repository</h4>
           <div class="repo-grid">
-            <label>Repó útvonal a szerveren
-              <span class="repo-url"><span class="repo-url-prefix"></span><input name="path" placeholder="csoport/repo.git" spellcheck="false" required></span>
+            <label>Repository path on the server
+              <span class="repo-url"><span class="repo-url-prefix"></span><input name="path" placeholder="group/repo.git" spellcheck="false" required></span>
             </label>
-            <label>Azonosító (a fa legfelső szintje)<input name="id" placeholder="automatikus" spellcheck="false" pattern="[a-z0-9][a-z0-9_\-]{0,39}"></label>
-            <label>Alap branch<input name="branch" spellcheck="false"></label>
-            <label>Könyvtár a repóban (üres = gyökér)<input name="docsPath" placeholder="docs" spellcheck="false"></label>
-            <label>Képek könyvtára<input name="assetsPath" placeholder="&lt;könyvtár&gt;/assets" spellcheck="false"></label>
+            <label>ID (top level of the tree)<input name="id" placeholder="automatic" spellcheck="false" pattern="[a-z0-9][a-z0-9_\-]{0,39}"></label>
+            <label>Base branch<input name="branch" spellcheck="false"></label>
+            <label>Folder in the repository (empty = root)<input name="docsPath" placeholder="docs" spellcheck="false"></label>
+            <label>Image folder<input name="assetsPath" placeholder="&lt;folder&gt;/assets" spellcheck="false"></label>
           </div>
           <div class="repo-form-actions">
-            <button type="submit" class="btn primary repo-submit">＋ Felvétel és letöltés</button>
-            <button type="button" class="btn repo-cancel" hidden>Mégse</button>
+            <button type="submit" class="btn primary repo-submit">＋ Add and download</button>
+            <button type="button" class="btn repo-cancel" hidden>Cancel</button>
           </div>
         </form>
       </div>

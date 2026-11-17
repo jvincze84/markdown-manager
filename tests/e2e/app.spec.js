@@ -65,6 +65,22 @@ test('keresés: fájlnév + tartalom, kiemelés a dokumentumban, szűrők törl�
   await expect(page.locator('#tree')).toBeVisible();
 });
 
+test('keresés: idézőjeles több szavas kifejezés (pontos egyezés, formázáson átívelve is)', async ({ page }) => {
+  await home(page);
+  const count = page.locator('#results .rcount');
+  await page.fill('#search-content', 'szöveg kiemelt'); // külön szavak: sorrendtől függetlenül egyezik
+  await expect(page.locator('.result[data-path="kb/docs/env.md"]')).toBeVisible();
+  await page.fill('#search-content', '"szöveg kiemelt"'); // kifejezés: ebben a sorrendben nincs
+  await expect(count).toContainText('No results');
+  await page.fill('#search-content', '„és a  KIEMELT szoveg”'); // magyar idézőjel, ékezet/kisbetű/szóköz-független
+  await expect(page.locator('.result')).toHaveCount(1);
+  await expect(page.locator('.result[data-path="kb/docs/env.md"] .rsnip mark')).toHaveText('és a kiemelt szöveg');
+  await page.click('.result[data-path="kb/docs/env.md"]');
+  // a dokumentumban a <strong>-on átívelő kifejezés egy találat
+  await expect(layer(page).locator('.hit-count')).toHaveText('1 / 1');
+  await expect(layer(page).locator('mark.search-hit')).toHaveCount(3); // "és a " + "kiemelt" + " szöveg"
+});
+
 test('nézet: kódszínezés, másolás, rendezhető táblázat, mermaid, hosszú sor görgetése', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   const errors = collectErrors(page);
@@ -77,7 +93,7 @@ test('nézet: kódszínezés, másolás, rendezhető táblázat, mermaid, hossz�
 
   await layer(page).locator('.code-wrap').first().hover();
   await layer(page).locator('.code-copy').first().click();
-  await expect(layer(page).locator('.code-copy').first()).toHaveText('✓ Másolva');
+  await expect(layer(page).locator('.code-copy').first()).toHaveText('✓ Copied');
   expect(await page.evaluate(() => navigator.clipboard.readText())).toContain('kubectl get pods');
 
   const th = layer(page).locator('table th').first();
@@ -108,7 +124,7 @@ test('előzmények: régi változat, diff az aktuálishoz, vissza', async ({ pag
   await expect(layer(page).locator('.markdown-body')).not.toContainText('Harmadik');
 
   await layer(page).locator('.rev-diff').click();
-  await expect(layer(page).locator('.diff-info')).toContainText('aktuális (main)');
+  await expect(layer(page).locator('.diff-info')).toContainText('current (main)');
   await expect(layer(page).locator('.d2h-ins').first()).toBeVisible();
   await layer(page).locator('.diff-back').click();
   await expect(layer(page).locator('.rev-banner')).toBeVisible();
@@ -238,7 +254,7 @@ test('WYSIWYG ↔ Markdown váltás: a módosítás megmarad, Ctrl+Z nem lép vi
   await expect(ww).toContainText('WWTESZT');
 });
 
-test('emoji választó: magyar keresés, beszúrás', async ({ page }) => {
+test('emoji választó: keresés, beszúrás', async ({ page }) => {
   await home(page);
   await page.click('li.frow:has(a[data-path="kb/docs/env.md"]) .fedit');
   await md(page).click();
@@ -246,7 +262,7 @@ test('emoji választó: magyar keresés, beszúrás', async ({ page }) => {
   await page.keyboard.press('End');
   await page.click('.emoji-btn');
   await expect(page.locator('.emoji-search')).toBeFocused();
-  await page.keyboard.type('rakéta');
+  await page.keyboard.type('rocket');
   await expect(page.locator('.emoji-popup button.emoji').first()).toHaveAttribute('data-e', '🚀');
   await page.keyboard.press('Enter');
   await expect(md(page)).toContainText('# Env🚀');
@@ -319,8 +335,8 @@ test('repó szűrő: több repó kiválasztása, fa és keresés csak ezekben, s
   await expect(page.locator('a.file[data-path="kb/docs/env.md"]')).toBeVisible();
 
   await page.fill('#search-content', 'Zsiráf'); // csak a "kb" repóban keres
-  await expect(page.locator('#results .rcount')).toContainText('Nincs találat');
-  await expect(page.locator('#results .rcount')).toContainText('repó: kb');
+  await expect(page.locator('#results .rcount')).toContainText('No results');
+  await expect(page.locator('#results .rcount')).toContainText('repo: kb');
   await page.fill('#search-content', '');
 
   await page.reload(); // a szűrő megmarad
@@ -328,7 +344,7 @@ test('repó szűrő: több repó kiválasztása, fa és keresés csak ezekben, s
   await expect(page.locator('a.file[data-path="masik/index.md"]')).toHaveCount(0);
 
   await page.click('#clear-filters');
-  await expect(page.locator('#repo-filter-label')).toHaveText('mind');
+  await expect(page.locator('#repo-filter-label')).toHaveText('all');
   await expect(page.locator('a.file[data-path="masik/index.md"]')).toBeVisible();
   await expect(page.locator('#clear-filters')).toBeHidden();
 
@@ -336,7 +352,7 @@ test('repó szűrő: több repó kiválasztása, fa és keresés csak ezekben, s
   await page.click('#repo-filter');
   await page.locator('#repo-menu input[value="kb"]').check();
   await page.locator('#repo-menu input[value="masik"]').check();
-  await expect(page.locator('#repo-filter-label')).toHaveText('mind');
+  await expect(page.locator('#repo-filter-label')).toHaveText('all');
   await expect(page.locator('#repo-menu input[value="kb"]')).toBeChecked(); // a pipák megmaradnak
   await expect(page.locator('#clear-filters')).toBeHidden();
   await page.click('#repo-menu-all');
@@ -367,17 +383,40 @@ test('repókezelés: felvétel a felületről, letöltés, eltávolítás', asyn
   await expect(dlg.locator('input[name="id"]')).toHaveAttribute('placeholder', 'harmadik');
   await dlg.locator('.repo-submit').click();
   await expect(dlg).toBeHidden();
-  await expect(page.locator('#sync-dialog .sync-state')).toHaveText('kész', { timeout: 30000 });
+  await expect(page.locator('#sync-dialog .sync-state')).toHaveText('done', { timeout: 30000 });
   await page.locator('#sync-dialog .sync-close').click();
   await expect(page.locator('a.file[data-path="harmadik/index.md"]')).toBeVisible();
 
   await page.click('#manage-repos');
-  await expect(dlg.locator('tr[data-id="harmadik"]')).toContainText('2 fájl');
+  await expect(dlg.locator('tr[data-id="harmadik"]')).toContainText('2 files');
   page.once('dialog', (d) => d.accept());
   await dlg.locator('tr[data-id="harmadik"] .repo-remove').click();
   await expect(dlg.locator('tr[data-id="harmadik"]')).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(page.locator('a.file[data-path="harmadik/index.md"]')).toHaveCount(0);
+});
+
+test('ugyanaz a repó több könyvtárral: külön könyvtár felvehető, átfedő nem', async ({ page, request }) => {
+  const idle = async () => expect.poll(async () => (await (await request.get('/api/status')).json()).syncing, { timeout: 30000 }).toBe(false);
+  const add = (data) => request.post('/api/repos', { data });
+  await idle();
+  expect((await add({ path: 'harmadik.git', id: 'h-jegyzet', docsPath: 'jegyzet' })).status()).toBe(201);
+  await idle();
+  for (const docsPath of ['jegyzet', 'jegyzet/al', '']) { // azonos, alkönyvtár, gyökér (minden könyvtárat átfed)
+    const r = await add({ path: 'harmadik.git', id: 'h-x', docsPath });
+    expect(r.status(), docsPath).toBe(400);
+    expect((await r.json()).error).toContain('already been added as “h-jegyzet”');
+  }
+  expect((await add({ path: 'harmadik.git', id: 'h-mas', docsPath: 'mas' })).status()).toBe(201); // külön könyvtár
+  await idle();
+  // szerkesztéskor sem lehet átfedő könyvtárra állítani
+  const put = await request.put('/api/repos/h-mas', { data: { branch: 'main', docsPath: 'jegyzet/al' } });
+  expect(put.status()).toBe(400);
+
+  await home(page);
+  await expect(page.locator('a.file[data-path="h-jegyzet/jegyzet/egyeb.md"]')).toBeVisible();
+  await expect(page.locator('details[data-repo][data-dir="h-mas"]')).toHaveCount(0); // üres könyvtár: nincs fájl
+  for (const id of ['h-jegyzet', 'h-mas']) expect((await request.delete(`/api/repos/${id}`)).ok()).toBe(true);
 });
 
 test('API: repó bemenet-ellenőrzés', async ({ request }) => {

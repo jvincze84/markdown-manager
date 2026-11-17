@@ -28,7 +28,19 @@
     }
     return out;
   }
-  const termsOf = (q) => norm(q || '').split(/\s+/).filter(Boolean);
+  /**
+   * Keresőkifejezés (ugyanaz, mint a szerveren) → normalizált keresőszavak. Idézőjelek közti rész ("…", „…”, “…”) egy kifejezés:
+   * pontos egyezés, a szavak sorrendjében (a szóközök száma nem számít). Lezáratlan idézőjel: a sor végéig.
+   */
+  function termsOf(q) {
+    const out = [];
+    const s = norm(q || '').replace(/[„“”]/g, '"');
+    for (const m of s.matchAll(/"([^"]*)"?|([^\s"]+)/g)) {
+      const t = (m[1] ?? m[2]).replace(/\s+/g, ' ').trim();
+      if (t) out.push(t);
+    }
+    return out;
+  }
   const nameQuery = () => $('#search-name').value.trim();
   const contentQuery = () => $('#search-content').value.trim();
   const searchActive = () => Boolean(nameQuery() || contentQuery());
@@ -51,7 +63,7 @@
 
   // ---------- Téma (automatikus / világos / sötét) ----------
 
-  const THEMES = { auto: ['🌓', 'automatikus (rendszer szerint)'], light: ['☀️', 'világos'], dark: ['🌙', 'sötét'] };
+  const THEMES = { auto: ['🌓', 'auto (follows the system)'], light: ['☀️', 'light'], dark: ['🌙', 'dark'] };
   const darkMq = matchMedia('(prefers-color-scheme: dark)');
   const themePref = () => (THEMES[localStorage.getItem('theme')] ? localStorage.getItem('theme') : 'auto');
   const isDark = () => document.documentElement.dataset.theme === 'dark';
@@ -66,14 +78,14 @@
     const [icon, label] = THEMES[pref];
     const btn = $('#theme-toggle');
     btn.textContent = icon;
-    btn.title = `Téma: ${label} — kattintás: váltás`;
+    btn.title = `Theme: ${label} — click to switch`;
     if (changed) for (const l of layers) l.onThemeChange(dark);
   }
   $('#theme-toggle').addEventListener('click', () => {
     const order = Object.keys(THEMES);
     localStorage.setItem('theme', order[(order.indexOf(themePref()) + 1) % order.length]);
     applyTheme();
-    toast(`Téma: ${THEMES[themePref()][1]}`, 'info', 1500);
+    toast(`Theme: ${THEMES[themePref()][1]}`, 'info', 1500);
   });
   darkMq.addEventListener('change', applyTheme);
 
@@ -84,22 +96,22 @@
 
   const repoList = () => status?.repos || [];
   const repoInfo = (id) => repoList().find((r) => r.id === id) || null;
-  const baseOf = (f) => repoInfo(f?.repo)?.branch || 'alap';
+  const baseOf = (f) => repoInfo(f?.repo)?.branch || 'base';
 
   function renderStatus() {
     const s = status;
     if (!s) return;
     const parts = [];
-    if (!s.configured) parts.push('<span class="err">GIT_URL nincs beállítva</span>');
+    if (!s.configured) parts.push('<span class="err">GIT_URL is not set</span>');
     else parts.push(`<b>${esc(s.server)}</b>`);
-    parts.push(`${s.repos.length} repó`);
-    parts.push(`${s.totalFiles} fájl`);
-    if (s.lastSync) parts.push(`utolsó sync: ${new Date(s.lastSync).toLocaleString()}`);
-    if (s.error) parts.push(`<span class="err">Hiba: ${esc(s.error)}</span>`);
-    for (const r of s.repos) if (r.error) parts.push(`<span class="err" title="${esc(r.error)}">${esc(r.id)}: hiba</span>`);
+    parts.push(`${s.repos.length} ${s.repos.length === 1 ? 'repository' : 'repositories'}`);
+    parts.push(`${s.totalFiles} ${s.totalFiles === 1 ? 'file' : 'files'}`);
+    if (s.lastSync) parts.push(`last sync: ${fullTime(s.lastSync)}`);
+    if (s.error) parts.push(`<span class="err">Error: ${esc(s.error)}</span>`);
+    for (const r of s.repos) if (r.error) parts.push(`<span class="err" title="${esc(r.error)}">${esc(r.id)}: error</span>`);
     $('#status').innerHTML = parts.join(' · ');
     $('#status').title = s.repos.map((r) => `${r.id}: ${r.url} (${r.branch}${r.docsPath ? `, /${r.docsPath}` : ''})`
-      + `${r.head ? ` @ ${r.head.commit}` : ' – még nincs letöltve'}`).join('\n');
+      + `${r.head ? ` @ ${r.head.commit}` : ' – not downloaded yet'}`).join('\n');
   }
 
   async function loadAll() {
@@ -111,8 +123,8 @@
     const empty = $('#empty');
     empty.hidden = files.length > 0;
     empty.innerHTML = repoList().length
-      ? 'Még nincs letöltött tartalom. Kattints a <b>⟳ Sync</b> gombra a repók letöltéséhez.'
-      : 'Még nincs felvett repó. Vegyél fel egyet a <b>⚙ Repók</b> gombbal.';
+      ? 'No content downloaded yet. Click <b>⟳ Sync</b> to download the repositories.'
+      : 'No repositories yet. Add one with the <b>⚙ Repos</b> button.';
   }
 
   // ---------- Szűrő: repók (több is kiválasztható; üres = mind) ----------
@@ -141,7 +153,7 @@
     btn.hidden = list.length < 2;
     btn.classList.toggle('active', repoFilterActive());
     $('#repo-filter-label').textContent = repoFilterActive()
-      ? (repoFilter.size === 1 ? [...repoFilter][0] : `${repoFilter.size} / ${list.length}`) : 'mind';
+      ? (repoFilter.size === 1 ? [...repoFilter][0] : `${repoFilter.size} / ${list.length}`) : 'all';
     $('#repo-menu-list').innerHTML = list.map((r) => `
       <label class="repo-opt" title="${esc(r.url)}">
         <input type="checkbox" value="${esc(r.id)}" ${repoFilter.has(r.id) ? 'checked' : ''}>
@@ -183,23 +195,25 @@
     : '';
 
   const badgeOf = (f) => f.isNew
-    ? '<span class="badge new">új</span>'
-    : f.isDeleted ? '<span class="badge del">🗑 törölt</span>'
-      : f.editBranch ? '<span class="badge">✎ módosított</span>' : '';
+    ? '<span class="badge new">new</span>'
+    : f.isDeleted ? '<span class="badge del">🗑 deleted</span>'
+      : f.editBranch ? '<span class="badge">✎ modified</span>' : '';
 
   // ---------- Fájl metaadatok: utolsó módosítás, commit hash, szerkesztés gomb ----------
 
-  const rtf = new Intl.RelativeTimeFormat('hu', { numeric: 'auto' });
+  // A felület angol; a dátumok brit formátumban (nap/hónap/év, 24 órás)
+  const LOCALE = 'en-GB';
+  const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
   function relTime(iso) {
     const sec = (new Date(iso) - Date.now()) / 1000;
     const abs = Math.abs(sec);
-    if (abs < 60) return 'most';
+    if (abs < 60) return 'now';
     if (abs < 3600) return rtf.format(Math.round(sec / 60), 'minute');
     if (abs < 86400) return rtf.format(Math.round(sec / 3600), 'hour');
     if (abs < 86400 * 30) return rtf.format(Math.round(sec / 86400), 'day');
-    return new Date(iso).toLocaleDateString('hu-HU');
+    return new Date(iso).toLocaleDateString(LOCALE);
   }
-  const fullTime = (iso) => new Date(iso).toLocaleString('hu-HU');
+  const fullTime = (iso) => new Date(iso).toLocaleString(LOCALE);
 
   function commitTip(c, label) {
     return `${label}: ${fullTime(c.date)}\n${c.hash.slice(0, 10)} · ${c.author}\n${c.subject}`;
@@ -221,12 +235,12 @@
     const c = f.branchCommit || f.commit;
     const onBranch = Boolean(f.branchCommit);
     let tip = '';
-    if (f.branchCommit) tip += commitTip(f.branchCommit, `Utolsó mentés (${f.editBranch})`);
-    if (f.commit) tip += `${tip ? '\n\n' : ''}${commitTip(f.commit, `Utolsó módosítás (${baseOf(f)})`)}`;
+    if (f.branchCommit) tip += commitTip(f.branchCommit, `Last save (${f.editBranch})`);
+    if (f.commit) tip += `${tip ? '\n\n' : ''}${commitTip(f.commit, `Last change (${baseOf(f)})`)}`;
     return `<span class="fmeta">
       ${c ? `<span class="fdate${onBranch ? ' on-branch' : ''}" title="${esc(tip)}">${onBranch ? '✎ ' : ''}${esc(relTime(c.date))}</span>${hashLink(c, f.repo, onBranch ? 'on-branch' : '')}`
         : '<span class="fdate muted">—</span><span class="fhash"></span>'}
-      <button type="button" class="fedit" data-path="${esc(f.path)}" title="Szerkesztés"${f.isDeleted ? ' style="visibility:hidden"' : ''}>✎</button>
+      <button type="button" class="fedit" data-path="${esc(f.path)}" title="Edit"${f.isDeleted ? ' style="visibility:hidden"' : ''}>✎</button>
     </span>`;
   }
   const fileByPath = (p) => files.find((f) => f.path === p);
@@ -235,8 +249,8 @@
   function foundNote(r) {
     if (!r.editBranch || r.isNew || !r.foundIn || r.foundIn === 'both') return '';
     return r.foundIn === 'branch'
-      ? '<span class="found-note">csak a módosított verzióban</span>'
-      : `<span class="found-note">csak a(z) ${esc(baseOf(r))} verzióban</span>`;
+      ? '<span class="found-note">only in the modified version</span>'
+      : `<span class="found-note">only in the ${esc(baseOf(r))} version</span>`;
   }
 
   function renderChanged() {
@@ -250,7 +264,7 @@
           </div>
           ${prButton(f)}${fileMeta(f)}
         </div>`).join('')
-      : '<div class="rcount">Nincs módosított vagy új fájl.</div>';
+      : '<div class="rcount">No modified or new files.</div>';
   }
 
   function renderView() {
@@ -287,9 +301,9 @@
 
   function fileItem(f) {
     const badge = f.isNew
-      ? `<span class="badge new" title="Új fájl, csak a(z) ${esc(f.editBranch || '')} branch-en létezik">új</span>`
-      : f.isDeleted ? `<span class="badge del" title="Törlésre jelölve a(z) ${esc(f.editBranch)} branch-en">törölt</span>`
-        : f.editBranch ? `<span class="badge" title="Szerkesztési branch: ${esc(f.editBranch)}">✎</span>` : '';
+      ? `<span class="badge new" title="New file, exists only on the ${esc(f.editBranch || '')} branch">new</span>`
+      : f.isDeleted ? `<span class="badge del" title="Marked for deletion on the ${esc(f.editBranch)} branch">deleted</span>`
+        : f.editBranch ? `<span class="badge" title="Edit branch: ${esc(f.editBranch)}">✎</span>` : '';
     return `<li class="frow"><a href="#" class="file${f.isDeleted ? ' deleted' : ''}" data-path="${esc(f.path)}" title="${esc(f.docPath)}">
       <span class="fname">${esc(f.name)}</span>${f.title && f.title !== f.name.replace(/\.md$/i, '') ? `<span class="ftitle">${esc(f.title)}</span>` : ''}${badge}</a>${fileMeta(f)}</li>`;
   }
@@ -316,7 +330,7 @@
       const repo = depth === 0 ? repoInfo(d) : null;
       const summary = repo
         ? `<span class="repo-node" title="${esc(repo.url)} · ${esc(repo.branch)}${repo.docsPath ? ` · /${esc(repo.docsPath)}` : ''}">📦 ${esc(d)}</span>`
-          + `<span class="muted repo-path">${esc(repo.path)}</span>${repo.error ? '<span class="badge del" title="' + esc(repo.error) + '">hiba</span>' : ''}`
+          + `<span class="muted repo-path">${esc(repo.path)}</span>${repo.error ? '<span class="badge del" title="' + esc(repo.error) + '">error</span>' : ''}`
         : `📁 ${esc(d)}`;
       html += `<li><details data-dir="${esc(key)}"${depth === 0 ? ' data-repo' : ''} ${open ? 'open' : ''}><summary>${summary}</summary>${renderNode(node.dirs[d], depth + 1, key + '/')}</details></li>`;
     }
@@ -326,7 +340,7 @@
 
   function renderTree() {
     $('#tree').innerHTML = files.length ? renderNode(buildTree(), 0) : '';
-    if (files.length && !visibleFiles().length) $('#tree').innerHTML = '<div class="rcount">A kiválasztott repókban nincs fájl.</div>';
+    if (files.length && !visibleFiles().length) $('#tree').innerHTML = '<div class="rcount">There are no files in the selected repositories.</div>';
   }
 
   // a 'toggle' esemény nem buborékol → capture
@@ -389,15 +403,15 @@
     $('#changed').hidden = true;
     $('#results').hidden = false;
     const scope = [
-      name && `fájlnév: „${esc(name)}”`,
-      q && `tartalom: „${esc(q)}”`,
-      filterChanged && 'csak módosított / új',
-      repoFilterActive() && `repó: ${[...repoFilter].map(esc).join(', ')}`,
+      name && `file name: “${esc(name)}”`,
+      q && `content: “${esc(q)}”`,
+      filterChanged && 'modified / new only',
+      repoFilterActive() && `repo: ${[...repoFilter].map(esc).join(', ')}`,
     ].filter(Boolean).join(' · ');
     $('#results').innerHTML = results.length
       ? `<div class="rcount">${results[0].approximate
-        ? `Pontos egyezés nincs — ${results.length} hasonló találat (elgépelés-tűréssel)`
-        : `${results.length} találat`} — ${scope}</div>` + results.map((r) => `
+        ? `No exact match — ${results.length} similar ${results.length === 1 ? 'result' : 'results'} (typo-tolerant)`
+        : `${results.length} ${results.length === 1 ? 'result' : 'results'}`} — ${scope}</div>` + results.map((r) => `
         <div class="result${r.approximate ? ' approx' : ''}" data-path="${esc(r.path)}" data-found="${esc(r.foundIn || '')}">
           <div class="rtop">
             <div class="cmain">
@@ -408,7 +422,7 @@
           </div>
           ${r.snippet !== null ? `<div class="rsnip">${r.snippet}</div>` : ''}
         </div>`).join('')
-      : `<div class="rcount">Nincs találat — ${scope}.</div>`;
+      : `<div class="rcount">No results — ${scope}.</div>`;
   }
   for (const id of ['#search-name', '#search-content']) {
     $(id).addEventListener('input', () => {
@@ -445,7 +459,7 @@
   function setSyncButton(running) {
     const btn = $('#sync');
     btn.classList.toggle('running', running);
-    btn.textContent = running ? '⟳ Szinkronizálás…' : '⟳ Sync';
+    btn.textContent = running ? '⟳ Syncing…' : '⟳ Sync';
   }
 
   function openSyncDialog() {
@@ -473,7 +487,7 @@
     const logEl = $('.sync-log', dlg);
     const bar = $('.progress', dlg);
     logEl.textContent = '';
-    setSyncState('folyamatban', 'running');
+    setSyncState('running', 'running');
     let since = 0;
     let last;
     try {
@@ -501,13 +515,13 @@
     bar.classList.toggle('error', !last.ok);
     await loadAll().catch(() => {});
     if (last.ok) {
-      setSyncState('kész', 'ok');
-      toast(`Sync kész: ${status.totalFiles} fájl`, 'success');
+      setSyncState('done', 'ok');
+      toast(`Sync done: ${status.totalFiles} ${status.totalFiles === 1 ? 'file' : 'files'}`, 'success');
       autoClose = setTimeout(closeSyncDialog, 2500);
     } else {
-      setSyncState('hiba', 'error');
+      setSyncState('error', 'error');
       openSyncDialog();
-      toast(`Sync hiba: ${esc(last.error || '')}`, 'error', 8000);
+      toast(`Sync error: ${esc(last.error || '')}`, 'error', 8000);
     }
   }
 
@@ -520,7 +534,7 @@
       await api('/api/sync', { method: 'POST', body: JSON.stringify(ids ? { repos: ids } : {}) });
     } catch (e) {
       if (e.status !== 409) {
-        setSyncState('hiba', 'error');
+        setSyncState('error', 'error');
         $('.sync-log', dlg).textContent = e.message;
         return;
       }
@@ -537,7 +551,7 @@
 
   function renderRepoTable() {
     const list = repoList();
-    $('.repo-server', repoDlg).textContent = status?.server || 'GIT_URL nincs beállítva';
+    $('.repo-server', repoDlg).textContent = status?.server || 'GIT_URL is not set';
     $('.repo-url-prefix', repoForm).textContent = `${status?.server || ''}/`;
     $('tbody', repoDlg).innerHTML = list.length ? list.map((r) => `
       <tr data-id="${esc(r.id)}">
@@ -546,14 +560,14 @@
         <td><code>${esc(r.branch)}</code></td>
         <td><code>/${esc(r.docsPath)}</code></td>
         <td><code>/${esc(r.assetsPath)}</code></td>
-        <td>${r.error ? `<span class="err" title="${esc(r.error)}">hiba</span>`
-          : r.head ? `${r.fileCount} fájl · <code>${esc(r.head.commit)}</code>` : '<span class="muted">nincs letöltve</span>'}</td>
+        <td>${r.error ? `<span class="err" title="${esc(r.error)}">error</span>`
+          : r.head ? `${r.fileCount} ${r.fileCount === 1 ? 'file' : 'files'} · <code>${esc(r.head.commit)}</code>` : '<span class="muted">not downloaded</span>'}</td>
         <td class="actions">
-          <button type="button" class="btn sm repo-sync" title="Csak ennek a repónak a letöltése / frissítése">⟳</button>
-          <button type="button" class="btn sm repo-edit" title="Beállítások módosítása">✎</button>
-          <button type="button" class="btn sm danger repo-remove" title="Eltávolítás az appból">🗑</button>
+          <button type="button" class="btn sm repo-sync" title="Download / update this repository only">⟳</button>
+          <button type="button" class="btn sm repo-edit" title="Edit settings">✎</button>
+          <button type="button" class="btn sm danger repo-remove" title="Remove from the app">🗑</button>
         </td>
-      </tr>`).join('') : '<tr class="empty-row"><td colspan="7">Még nincs felvett repó.</td></tr>';
+      </tr>`).join('') : '<tr class="empty-row"><td colspan="7">No repositories yet.</td></tr>';
   }
 
   function resetRepoForm() {
@@ -562,8 +576,8 @@
     repoForm.elements.branch.value = status?.defaultBranch || 'main';
     repoForm.elements.path.disabled = false;
     repoForm.elements.id.disabled = false;
-    $('.repo-form-title', repoForm).textContent = 'Új repó felvétele';
-    $('.repo-submit', repoForm).textContent = '＋ Felvétel és letöltés';
+    $('.repo-form-title', repoForm).textContent = 'Add a repository';
+    $('.repo-submit', repoForm).textContent = '＋ Add and download';
     $('.repo-cancel', repoForm).hidden = true;
   }
 
@@ -601,20 +615,20 @@
       f.assetsPath.value = r.assetsPath;
       f.path.disabled = true;
       f.id.disabled = true;
-      $('.repo-form-title', repoForm).textContent = `„${r.id}” módosítása`;
-      $('.repo-submit', repoForm).textContent = '💾 Mentés és újratöltés';
+      $('.repo-form-title', repoForm).textContent = `Edit “${r.id}”`;
+      $('.repo-submit', repoForm).textContent = '💾 Save and reload';
       $('.repo-cancel', repoForm).hidden = false;
       f.branch.focus();
     } else if (e.target.closest('.repo-remove')) {
-      if (!confirm(`Eltávolítod a(z) „${r.id}” repót az appból?\n\nA helyi másolat és a még nem mentett képfeltöltések törlődnek. A git szerveren semmi nem változik (a szerkesztési branchek is megmaradnak), a repó később újra felvehető.`)) return;
+      if (!confirm(`Remove the “${r.id}” repository from the app?\n\nThe local copy and any unsaved image uploads will be deleted. Nothing changes on the git server (edit branches are kept as well); the repository can be added again later.`)) return;
       try {
         await api(`/api/repos/${encodeURIComponent(r.id)}`, { method: 'DELETE' });
-        toast(`Repó eltávolítva: <b>${esc(r.id)}</b>`, 'success');
+        toast(`Repository removed: <b>${esc(r.id)}</b>`, 'success');
         await loadAll();
         renderRepoTable();
         if (editingRepo === r.id) resetRepoForm();
       } catch (err) {
-        toast(`Hiba: ${esc(err.message)}`, 'error', 8000);
+        toast(`Error: ${esc(err.message)}`, 'error', 8000);
       }
     } else if (e.target.closest('.repo-sync')) {
       closeRepoDialog();
@@ -632,7 +646,7 @@
       const r = editingRepo
         ? await api(`/api/repos/${encodeURIComponent(editingRepo)}`, { method: 'PUT', body: JSON.stringify(body) })
         : await api('/api/repos', { method: 'POST', body: JSON.stringify(body) });
-      toast(`${editingRepo ? 'Repó módosítva' : 'Repó felvéve'}: <b>${esc(r.repo.id)}</b> — letöltés…`, 'success');
+      toast(`${editingRepo ? 'Repository updated' : 'Repository added'}: <b>${esc(r.repo.id)}</b> — downloading…`, 'success');
       await loadAll();
       renderRepoTable();
       resetRepoForm();
@@ -640,7 +654,7 @@
       openSyncDialog();
       followSync();
     } catch (err) {
-      toast(`Hiba: ${esc(err.message)}`, 'error', 8000);
+      toast(`Error: ${esc(err.message)}`, 'error', 8000);
     } finally {
       btn.disabled = false;
     }
@@ -690,7 +704,7 @@
     }
 
     initCreate(dir, repoId) {
-      this.q('.title').textContent = 'Új fájl';
+      this.q('.title').textContent = 'New file';
       this.q('.edit').hidden = true;
       const wrap = this.q('.new-path');
       wrap.hidden = false;
@@ -722,7 +736,7 @@
         localStorage.setItem('newFileRepo', sel.value);
         update();
       });
-      this.data = { content: '# Új dokumentum\n\n' };
+      this.data = { content: '# New document\n\n' };
       this.startEdit().then(() => {
         input.focus();
         input.setSelectionRange(input.value.length, input.value.length);
@@ -907,17 +921,17 @@
       sel.hidden = this.editing || !list.length || !this.q('.diff-view').hidden;
       if (!list.length) return;
       const d = this.data || {};
-      const fmt = (iso) => new Date(iso).toLocaleString('hu-HU', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+      const fmt = (iso) => new Date(iso).toLocaleString(LOCALE, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
       const opt = (c, i) => {
         const subj = c.subject.length > 60 ? `${c.subject.slice(0, 57)}…` : c.subject;
         // a csoport legfrissebb commitja = a branch / alap aktuális változata
-        return `<option value="${esc(c.hash)}" title="${esc(`${c.hash.slice(0, 10)} · ${c.author}\n${c.subject}`)}">${c.onBranch ? '✎ ' : ''}${esc(fmt(c.date))} · ${esc(c.hash.slice(0, 7))} · ${esc(subj)}${i === 0 ? ' (aktuális)' : ''}</option>`;
+        return `<option value="${esc(c.hash)}" title="${esc(`${c.hash.slice(0, 10)} · ${c.author}\n${c.subject}`)}">${c.onBranch ? '✎ ' : ''}${esc(fmt(c.date))} · ${esc(c.hash.slice(0, 7))} · ${esc(subj)}${i === 0 ? ' (current)' : ''}</option>`;
       };
       const branch = list.filter((c) => c.onBranch);
       const base = list.filter((c) => !c.onBranch);
-      sel.innerHTML = `<option value="">🕘 Előzmények (${list.length})</option>`
-        + (branch.length ? `<optgroup label="Szerkesztési branch (${esc(d.editBranch || '')})">${branch.map(opt).join('')}</optgroup>` : '')
-        + (base.length ? `<optgroup label="${esc(d.baseBranch || 'alap')}">${base.map(opt).join('')}</optgroup>` : '');
+      sel.innerHTML = `<option value="">🕘 History (${list.length})</option>`
+        + (branch.length ? `<optgroup label="Edit branch (${esc(d.editBranch || '')})">${branch.map(opt).join('')}</optgroup>` : '')
+        + (base.length ? `<optgroup label="${esc(d.baseBranch || 'base')}">${base.map(opt).join('')}</optgroup>` : '');
       sel.value = d.rev && list.some((c) => c.hash === d.rev) ? d.rev : '';
       sel.classList.toggle('active', Boolean(d.rev));
     }
@@ -928,8 +942,8 @@
       banner.hidden = !d?.rev;
       if (!d?.rev) return;
       const c = (this.history || []).find((x) => x.hash === d.rev);
-      this.q('.rev-info').innerHTML = `🕘 Korábbi változat: <code>${esc(d.rev.slice(0, 7))}</code>`
-        + (c ? ` · ${esc(new Date(c.date).toLocaleString('hu-HU'))} · ${esc(c.author)} — „${esc(c.subject)}”` : '')
+      this.q('.rev-info').innerHTML = `🕘 Earlier version: <code>${esc(d.rev.slice(0, 7))}</code>`
+        + (c ? ` · ${esc(fullTime(c.date))} · ${esc(c.author)} — “${esc(c.subject)}”` : '')
         + (c?.onBranch ? ' <span class="badge">✎ branch</span>' : '');
     }
 
@@ -941,7 +955,7 @@
         const q = `/api/diff?path=${encodeURIComponent(this.path)}${rev ? `&rev=${encodeURIComponent(rev)}` : ''}`;
         [r] = await Promise.all([api(q), loadDiff2Html()]);
       } catch (e) {
-        toast(`Diff hiba: ${esc(e.message)}`, 'error');
+        toast(`Diff error: ${esc(e.message)}`, 'error');
         return;
       }
       this.diffData = r;
@@ -957,11 +971,11 @@
       const removed = (r.diff.match(/^-(?!--)/gm) || []).length;
       const stat = `<span class="diff-stat"><span class="add">+${added}</span> <span class="del">−${removed}</span></span>`;
       this.q('.diff-info').innerHTML = rev
-        ? `<code>${esc(rev.slice(0, 7))}</code> → <code class="${r.onBranch ? 'branch' : ''}">aktuális (${esc(r.target)})</code> ${stat}`
+        ? `<code>${esc(rev.slice(0, 7))}</code> → <code class="${r.onBranch ? 'branch' : ''}">current (${esc(r.target)})</code> ${stat}`
         : `<code>${esc(r.baseBranch)}</code> ← <code class="branch">${esc(r.branch)}</code> ${stat}`;
       this.q('.diff-commits').innerHTML = r.commits.length
-        ? `<details><summary>${r.commits.length} commit ${rev ? 'azóta' : 'a branch-en'}</summary><ul>${r.commits.map((c) =>
-          `<li><code>${esc(c.hash)}</code> ${esc(c.subject)} <span class="muted">— ${esc(c.author)}, ${new Date(c.date).toLocaleString()}</span></li>`).join('')}</ul></details>`
+        ? `<details><summary>${r.commits.length} ${r.commits.length === 1 ? 'commit' : 'commits'} ${rev ? 'since then' : 'on the branch'}</summary><ul>${r.commits.map((c) =>
+          `<li><code>${esc(c.hash)}</code> ${esc(c.subject)} <span class="muted">— ${esc(c.author)}, ${esc(fullTime(c.date))}</span></li>`).join('')}</ul></details>`
         : '';
       this.renderDiff();
     }
@@ -971,7 +985,7 @@
       this.q('.diff-format').querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.fmt === fmt));
       const body = this.q('.diff-body');
       if (!this.diffData.diff.trim()) {
-        body.innerHTML = `<p class="muted diff-empty">Nincs eltérés az ${this.diffRev ? 'aktuális változathoz' : 'alap branch-hez'} képest.</p>`;
+        body.innerHTML = `<p class="muted diff-empty">No differences compared to the ${this.diffRev ? 'current version' : 'base branch'}.</p>`;
         return;
       }
       body.innerHTML = window.Diff2Html.html(this.diffData.diff, {
@@ -983,20 +997,20 @@
       const d = this.data;
       if (!d || d.isNew || d.isDeleted) return;
       const pending = d.editBranch && d.source === 'branch'
-        ? '\n\nA branch-en lévő módosítások helyett a törlés kerül a PR-be (a korábbi commitok megmaradnak a branch-en).' : '';
-      if (!confirm(`Biztosan törlöd a(z) „${d.path}” fájlt?\n\nA törlés egy commit lesz a fájl saját branch-én; a(z) ${d.baseBranch} branch-ből a pull request merge-e után törlődik. Addig az „↺ Eldobás” gombbal visszavonható.${pending}`)) return;
+        ? '\n\nThe PR will contain the deletion instead of the changes on the branch (earlier commits remain on the branch).' : '';
+      if (!confirm(`Delete “${d.path}”?\n\nThe deletion will be a commit on the file's own branch; the file is removed from ${d.baseBranch} when the pull request is merged. Until then it can be undone with “↺ Discard”.${pending}`)) return;
       const btn = this.q('.delete');
       btn.disabled = true;
       try {
         const r = await api(`/api/file?path=${encodeURIComponent(this.path)}`, { method: 'DELETE' });
-        const link = r.prUrl ? ` · <a href="${esc(r.prUrl)}" target="_blank" rel="noopener">PR nyitása ↗</a>` : '';
-        toast(`Törlésre jelölve: <code>${esc(r.branch)}</code> (${esc(r.commit)})${link}`, 'success', 8000);
+        const link = r.prUrl ? ` · <a href="${esc(r.prUrl)}" target="_blank" rel="noopener">Open PR ↗</a>` : '';
+        toast(`Marked for deletion: <code>${esc(r.branch)}</code> (${esc(r.commit)})${link}`, 'success', 8000);
         files = await api('/api/files');
         renderView();
         this.history = null;
         await this.load('base');
       } catch (e) {
-        toast(`Törlési hiba: ${esc(e.message)}`, 'error', 10000);
+        toast(`Delete error: ${esc(e.message)}`, 'error', 10000);
       } finally {
         btn.disabled = false;
       }
@@ -1005,11 +1019,11 @@
     async discard() {
       const d = this.data;
       const what = d.isNew
-        ? `Az új fájl (${d.path}) még nincs az alap branch-en, így a branch törlésével a fájl is elveszik.`
+        ? `The new file (${d.path}) is not on the base branch yet, so deleting the branch also deletes the file.`
         : d.isDeleted
-          ? 'A törlés visszavonódik, a fájl megmarad.'
-          : `A módosítások elvesznek, a fájl az alap (${d.baseBranch}) verzióra áll vissza.`;
-      if (!confirm(`Biztosan eldobod a(z) „${d.editBranch}” branch-et?\n\n${what}\n\nEz nem vonható vissza.`)) return;
+          ? 'The deletion is undone, the file is kept.'
+          : `The changes will be lost; the file reverts to the base (${d.baseBranch}) version.`;
+      if (!confirm(`Discard the “${d.editBranch}” branch?\n\n${what}\n\nThis cannot be undone.`)) return;
       try {
         const r = await api(`/api/branch?path=${encodeURIComponent(this.path)}`, { method: 'DELETE' });
         toast(`Branch eldobva: <code>${esc(r.branch)}</code>`, 'success');
@@ -1019,7 +1033,7 @@
         if (r.removed) this.close(true);
         else await this.load('base');
       } catch (e) {
-        toast(`Eldobási hiba: ${esc(e.message)}`, 'error', 10000);
+        toast(`Discard error: ${esc(e.message)}`, 'error', 10000);
       }
     }
 
@@ -1041,7 +1055,7 @@
 
     async startEdit() {
       if (this.data?.isDeleted) {
-        toast('A fájl törlésre van jelölve. Szerkesztés előtt vond vissza a törlést (↺ Eldobás).', 'info', 6000);
+        toast('This file is marked for deletion. Undo the deletion (↺ Discard) before editing.', 'info', 6000);
         return;
       }
       // Mindig a legfrissebb verziót szerkesztjük: ha van szerkesztési branch, abból
@@ -1095,7 +1109,7 @@
       this.editor.addCommand('wysiwyg', 'formatTables', run);
       this.editor.insertToolbarItem({ groupIndex: 3, itemIndex: 1 }, {
         name: 'formatTables',
-        tooltip: 'Táblázatok rendezése (oszlopok igazítása az egész dokumentumban)',
+        tooltip: 'Format tables (align columns in the whole document)',
         className: 'toastui-editor-toolbar-icons tbl-format',
         text: '⊞⇥',
         command: 'formatTables',
@@ -1112,7 +1126,7 @@
       });
       this.editor.insertToolbarItem({ groupIndex: 3, itemIndex: 4 }, {
         name: 'emoji',
-        tooltip: 'Emoji beszúrása',
+        tooltip: 'Insert emoji',
         className: 'toastui-editor-toolbar-icons emoji-btn',
         text: '😀',
         popup: { className: 'emoji-popup', body: picker.el, style: { width: 'auto' } },
@@ -1125,8 +1139,8 @@
       const ed = this.editor;
       const before = ed.getMarkdown();
       const { text, count } = window.MdTable.formatTables(before);
-      if (!count) return toast('Nincs táblázat a dokumentumban.', 'info');
-      if (text === before) return toast(`${count} táblázat — már rendezett.`, 'info');
+      if (!count) return toast('There are no tables in the document.', 'info');
+      if (text === before) return toast(`${count} ${count === 1 ? 'table' : 'tables'} — already formatted.`, 'info');
       const md = ed.isMarkdownMode();
       const sel = md ? ed.getSelection() : null;
       const scroller = md ? this.q('.toastui-editor-md-container .ProseMirror') : null;
@@ -1147,14 +1161,14 @@
         ed.focus();
         if (scroller) scroller.scrollTop = top;
       }
-      toast(`${count} táblázat rendezve.`, 'success');
+      toast(`${count} ${count === 1 ? 'table' : 'tables'} formatted.`, 'success');
     }
 
     /** A szerkesztett dokumentum virtuális útvonala (<repó>/<útvonal>; új fájlnál a beírt útvonalból). */
     docPath() {
       if (!this.creating) return this.path;
       let p = this.q('.new-path-input').value.trim().replace(/\\/g, '/').replace(/^\/+/, '');
-      if (!p || p.endsWith('/')) p += 'uj.md';
+      if (!p || p.endsWith('/')) p += 'new.md';
       if (!/\.(md|markdown)$/i.test(p)) p += '.md';
       const repo = this.q('.new-path-repo').value;
       const docsPath = repoInfo(repo)?.docsPath || '';
@@ -1162,9 +1176,9 @@
     }
 
     async uploadImage(blob, callback) {
-      const name = blob.name || `kep.${(blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg').replace('svg+xml', 'svg')}`;
+      const name = blob.name || `image.${(blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg').replace('svg+xml', 'svg')}`;
       const doc = this.docPath();
-      const t = toast(`Kép feltöltése: ${esc(name)}…`, 'info', 30000);
+      const t = toast(`Uploading image: ${esc(name)}…`, 'info', 30000);
       try {
         const res = await fetch(`/api/upload?doc=${encodeURIComponent(doc)}&name=${encodeURIComponent(name)}`, {
           method: 'POST', headers: { 'Content-Type': blob.type || 'application/octet-stream' }, body: blob,
@@ -1174,10 +1188,10 @@
         (this.uploads ||= []).push({ path: r.path, url: r.url, doc });
         callback(r.url, name.replace(/\.[^.]+$/, ''));
         t?.remove?.();
-        toast(`Kép feltöltve: <code>${esc(r.path)}</code> — mentéskor a commit része lesz.`, 'success');
+        toast(`Image uploaded: <code>${esc(r.path)}</code> — it will be part of the commit when you save.`, 'success');
       } catch (e) {
         t?.remove?.();
-        toast(`Képfeltöltési hiba: ${esc(e.message)}`, 'error', 10000);
+        toast(`Image upload error: ${esc(e.message)}`, 'error', 10000);
       }
     }
 
@@ -1197,7 +1211,7 @@
     }
 
     stopEdit(force) {
-      if (!force && (this.dirty() || (this.creating && this.q('.new-path-input').value.trim())) && !confirm('Elveted a mentetlen módosításokat?')) return false;
+      if (!force && (this.dirty() || (this.creating && this.q('.new-path-input').value.trim())) && !confirm('Discard unsaved changes?')) return false;
       this.setEditing(false);
       return true;
     }
@@ -1207,7 +1221,7 @@
       this.saving = true;
       const btn = this.q('.save');
       btn.disabled = true;
-      btn.textContent = '💾 Mentés…';
+      btn.textContent = '💾 Saving…';
       try {
         const md = this.editor.getMarkdown();
         const payload = { content: this.creating ? this.fixUploadLinks(md) : md, message: this.q('.commit-msg').value };
@@ -1221,10 +1235,10 @@
           this.q('.edit').hidden = false;
         }
         if (r.unchanged) {
-          toast('Nincs változás, nem történt commit.', 'info');
+          toast('No changes, nothing was committed.', 'info');
         } else {
-          const link = r.prUrl ? ` · <a href="${esc(r.prUrl)}" target="_blank" rel="noopener">PR nyitása ↗</a>` : '';
-          toast(`Mentve és push-olva: <code>${esc(r.branch)}</code> (${esc(r.commit)})${link}`, 'success', 8000);
+          const link = r.prUrl ? ` · <a href="${esc(r.prUrl)}" target="_blank" rel="noopener">Open PR ↗</a>` : '';
+          toast(`Saved and pushed: <code>${esc(r.branch)}</code> (${esc(r.commit)})${link}`, 'success', 8000);
         }
         this.stopEdit(true);
         this.history = null; // új commit → előzmények újratöltése
@@ -1232,11 +1246,11 @@
         files = await api('/api/files');
         renderView();
       } catch (e) {
-        toast(`Mentési hiba: ${esc(e.message)}`, 'error', 10000);
+        toast(`Save error: ${esc(e.message)}`, 'error', 10000);
       } finally {
         this.saving = false;
         btn.disabled = false;
-        btn.textContent = '💾 Mentés';
+        btn.textContent = '💾 Save';
       }
     }
 
@@ -1259,8 +1273,8 @@
   }
 
   $('#new-file').addEventListener('click', () => {
-    if (!repoList().length) return toast('Előbb vegyél fel egy repót (⚙ Repók).', 'error');
-    if (!repoList().some((r) => r.head)) return toast('Előbb futtasd a Sync-et.', 'error');
+    if (!repoList().length) return toast('Add a repository first (⚙ Repos).', 'error');
+    if (!repoList().some((r) => r.head)) return toast('Run Sync first.', 'error');
     // alapértelmezett repó: ha a szűrőben pontosan egy van kiválasztva, az; különben a legutóbb használt
     const repo = repoFilterActive() && repoFilter.size === 1 ? [...repoFilter][0] : localStorage.getItem('newFileRepo');
     openLayer(null, null, { create: true, repo });
@@ -1282,7 +1296,7 @@
     ta.select();
     const ok = document.execCommand('copy');
     ta.remove();
-    if (!ok) throw new Error('A böngésző nem engedte a vágólapra másolást.');
+    if (!ok) throw new Error('The browser did not allow copying to the clipboard.');
   }
 
   function addCopyButtons(root) {
@@ -1300,13 +1314,13 @@
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'code-copy';
-      btn.title = 'Másolás a vágólapra';
-      btn.textContent = '⧉ Másolás';
+      btn.title = 'Copy to clipboard';
+      btn.textContent = '⧉ Copy';
       btn.addEventListener('click', async () => {
         const code = pre.querySelector('code') || pre;
         try {
           await copyText(code.textContent.replace(/\n$/, ''));
-          btn.textContent = '✓ Másolva';
+          btn.textContent = '✓ Copied';
           btn.classList.add('done');
         } catch (e) {
           btn.textContent = '✕ Hiba';
@@ -1314,7 +1328,7 @@
         }
         clearTimeout(btn._t);
         btn._t = setTimeout(() => {
-          btn.textContent = '⧉ Másolás';
+          btn.textContent = '⧉ Copy';
           btn.classList.remove('done');
         }, 1500);
       });
@@ -1376,9 +1390,9 @@
   }).catch((e) => { emojiData = null; throw e; }));
 
   const EMOJI_GROUPS = [
-    [0, '😀', 'Hangulatjelek'], [1, '👋', 'Emberek, testrészek'], [3, '🐶', 'Állatok, természet'],
-    [4, '🍔', 'Étel, ital'], [5, '✈️', 'Utazás, helyek'], [6, '⚽', 'Tevékenységek'],
-    [7, '💡', 'Tárgyak'], [8, '❤️', 'Szimbólumok'], [9, '🏁', 'Zászlók'],
+    [0, '😀', 'Smileys & emotion'], [1, '👋', 'People & body'], [3, '🐶', 'Animals & nature'],
+    [4, '🍔', 'Food & drink'], [5, '✈️', 'Travel & places'], [6, '⚽', 'Activities'],
+    [7, '💡', 'Objects'], [8, '❤️', 'Symbols'], [9, '🏁', 'Flags'],
   ];
   const RECENT_KEY = 'recentEmojis';
   const recentEmojis = () => { try { return JSON.parse(localStorage.getItem(RECENT_KEY)) || []; } catch { return []; } };
@@ -1389,11 +1403,11 @@
     const el = document.createElement('div');
     el.className = 'emoji-picker';
     el.innerHTML = `
-      <input class="emoji-search" type="search" placeholder="Keresés… (pl. szív, pipa, rakéta, tada)" autocomplete="off" spellcheck="false">
-      <div class="emoji-tabs"><button type="button" data-tab="recent" title="Legutóbb használt">🕘</button>${EMOJI_GROUPS.map(([g, icon, name]) =>
+      <input class="emoji-search" type="search" placeholder="Search… (e.g. heart, check, rocket, tada)" autocomplete="off" spellcheck="false">
+      <div class="emoji-tabs"><button type="button" data-tab="recent" title="Recently used">🕘</button>${EMOJI_GROUPS.map(([g, icon, name]) =>
         `<button type="button" data-tab="${g}" title="${esc(name)}">${icon}</button>`).join('')}</div>
-      <div class="emoji-grid"><div class="emoji-loading">Betöltés…</div></div>
-      <div class="emoji-foot"><span class="emoji-preview"></span><span class="emoji-name">Shift+kattintás: több emoji beszúrása</span></div>`;
+      <div class="emoji-grid"><div class="emoji-loading">Loading…</div></div>
+      <div class="emoji-foot"><span class="emoji-preview"></span><span class="emoji-name">Shift+click: insert several emojis</span></div>`;
     const search = el.querySelector('.emoji-search');
     const grid = el.querySelector('.emoji-grid');
     let data = null;
@@ -1402,7 +1416,7 @@
 
     function renderAll() {
       const recent = recentEmojis().map((u) => byEmoji.get(u)).filter(Boolean);
-      grid.innerHTML = (recent.length ? `<h4 data-sec="recent">Legutóbb használt</h4><div class="emoji-set">${recent.map(btn).join('')}</div>` : '')
+      grid.innerHTML = (recent.length ? `<h4 data-sec="recent">Recently used</h4><div class="emoji-set">${recent.map(btn).join('')}</div>` : '')
         + EMOJI_GROUPS.map(([g, , name]) => `<h4 data-sec="${g}">${esc(name)}</h4><div class="emoji-set">${data.filter((e) => e[1] === g).map(btn).join('')}</div>`).join('');
       el.querySelector('[data-tab="recent"]').disabled = !recent.length;
     }
@@ -1424,7 +1438,7 @@
         .map((x) => x.e);
       grid.innerHTML = hits.length
         ? `<div class="emoji-set">${hits.slice(0, 400).map(btn).join('')}</div>`
-        : '<div class="emoji-loading">Nincs találat.</div>';
+        : '<div class="emoji-loading">No results.</div>';
     }
     const refresh = () => { if (!data) return; grid.scrollTop = 0; if (search.value.trim()) renderSearch(search.value); else renderAll(); };
 
@@ -1466,7 +1480,7 @@
           data = await loadEmojis();
           for (const e of data) byEmoji.set(e[0], e);
         } catch (err) {
-          grid.innerHTML = `<div class="emoji-loading err">Nem sikerült betölteni: ${esc(err.message)}</div>`;
+          grid.innerHTML = `<div class="emoji-loading err">Failed to load: ${esc(err.message)}</div>`;
           return;
         }
       }
@@ -1496,7 +1510,7 @@
       [...ths].forEach((th, col) => {
         th.classList.add('sortable');
         th.tabIndex = 0;
-        th.title = 'Rendezés (kattintás: növekvő → csökkenő → eredeti)';
+        th.title = 'Sort (click: ascending → descending → original)';
         const sort = () => {
           const dir = state.col === col ? (state.dir === 1 ? -1 : state.dir === -1 ? 0 : 1) : 1;
           state = { col, dir };
@@ -1530,7 +1544,7 @@
       const s = document.createElement('script');
       s.src = '/vendor/diff2html/js/diff2html.min.js';
       s.onload = resolve;
-      s.onerror = () => { diff2htmlLoading = null; reject(new Error('diff2html betöltése sikertelen')); };
+      s.onerror = () => { diff2htmlLoading = null; reject(new Error('Failed to load diff2html')); };
       document.head.append(s);
     });
     return diff2htmlLoading;
@@ -1559,9 +1573,20 @@
       segs.push({ node, start: text.length, end: text.length + node.nodeValue.length, pieces: [] });
       text += node.nodeValue;
     }
-    const n = normChars(text);
+    // Normalizált szöveg, a szóközök (sortörés, több szóköz, nbsp) egy szóközzé vonva, hogy a több szavas
+    // kifejezések is egyezzenek; map: a normalizált pozíció → eredeti pozíció
+    const raw = normChars(text);
+    let n = '';
+    const map = [];
+    for (let i = 0; i < raw.length; i++) {
+      if (/\s/.test(raw[i])) {
+        if (n.endsWith(' ')) continue;
+        n += ' ';
+      } else n += raw[i];
+      map.push(i);
+    }
     const ranges = [];
-    for (const t of terms) for (const i of findAll(n, t)) ranges.push([i, i + t.length]);
+    for (const t of terms) for (const i of findAll(n, t)) ranges.push([map[i], map[i + t.length - 1] + 1]);
     ranges.sort((a, b) => a[0] - b[0]);
     const hits = [];
     let last = -1;

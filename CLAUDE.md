@@ -5,7 +5,8 @@ letölti a `*.md` fájlokat, megjeleníti, kereshetővé és szerkeszthetővé t
 a pull requestet a felhasználó nyitja meg kézzel. A felhasználói dokumentáció: `README.md`.
 
 ## Együttműködés
-- A felhasználó **magyarul** ír, magyarul válaszolj. A felület szövegei, a kód kommentjei és a README is magyarok.
+- A felhasználó **magyarul** ír, magyarul válaszolj. A kód kommentjei és a README magyarok.
+- A **felület angol** (gombok, üzenetek, sync napló, API hibaüzenetek, konzol), egynyelvű – nincs i18n. Új szöveg is angolul kerüljön be.
 - Minden új funkció után frissítsd a `README.md`-t (funkciólista / env változók).
 - Változtatás után futtasd a teszteket (`tests/run.sh`), és új funkcióhoz írj e2e tesztet a `tests/e2e/app.spec.js`-be.
 - Git: **csak lokális repó**, nincs remote – ne push-olj. Commitolni csak kérésre.
@@ -24,6 +25,7 @@ a pull requestet a felhasználó nyitja meg kézzel. A felhasználói dokumentá
 - A `.env` fájl a valódi titkokat tartalmazza: ne olvasd, ne commitold (benne van a `.gitignore`-ban).
 - Új végpontoknál: útvonalak validálása (`safeRepoPath`, `newFilePath`, `resolve`), commit azonosító csak `^[0-9a-f]{7,40}$`.
 - Repó beállítások (azonosító, útvonal, branch, könyvtárak) csak a `lib/repos.js` `normalize`-on át kerülhetnek a `repos.json`-ba.
+  Ugyanaz a repó több bejegyzésként is felvehető, de csak nem átfedő könyvtárakkal (azonos / egymásba ágyazott / gyökér = tiltva).
 
 ## Build, futtatás, teszt
 Helyben **nincs Node** – minden Dockerben fut.
@@ -92,7 +94,9 @@ Helyben **nincs Node** – minden Dockerben fut.
 - A Prism nyelvi komponensek a globális `Prism`-re épülnek → `build/prism-setup.js` előbb fut.
 - Új gomb / eseménykezelő hozzáadásakor ellenőrizd, hogy egy nagyobb blokk cseréje nem törölt-e ki
   szomszédos kódot (egyszer így tűnt el az „Új fájl” gomb kezelője) – erre valók az e2e tesztek.
-- A felület magyar; dátumok `hu-HU`, rendezés `Intl.Collator('hu', { numeric: true })`.
+- A felület angol; dátumok `en-GB` (`LOCALE` az `app.js`-ben, szerveren a sync napló ideje), relatív idő `Intl.RelativeTimeFormat('en')`.
+  A rendezés `Intl.Collator('hu', { numeric: true })` marad (a fájlnevek / tartalom jellemzően magyar).
+- Az emoji-választó csak angol nevekkel/kulcsszavakkal keres (`build/emoji-build.js`).
 
 ## Tesztkörnyezet
 - `tests/fixture/make-repo.sh <cél.git>`: bare repó a `tests/fixture/docs` tartalmából ismert előzményekkel
