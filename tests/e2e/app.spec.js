@@ -197,6 +197,49 @@ test('képfeltöltés: assets könyvtárba, relatív link, ugyanabba a commitba'
   await discard(request, 'kb/docs/guide/install.md');
 });
 
+test('fájl csatolása: 📎 gomb és behúzás, assets könyvtárba, link, ugyanabba a commitba', async ({ page, request }) => {
+  const errors = collectErrors(page);
+  await home(page);
+  await page.click('li.frow:has(a[data-path="kb/docs/guide/install.md"]) .fedit');
+  await md(page).click();
+  await page.keyboard.press('Control+End');
+  await page.keyboard.press('Enter');
+  const chooser = page.waitForEvent('filechooser');
+  await page.click('.toastui-editor-toolbar-icons.attach-btn');
+  await (await chooser).setFiles({ name: 'Leírás jegyzet.zip', mimeType: 'application/zip', buffer: Buffer.from('PK e2e zip') });
+  await expect(md(page)).toContainText(/\[Leírás jegyzet\.zip\]\(\.\.\/assets\/leiras-jegyzet-[0-9a-f]{8}\.zip\)/);
+  const link = page.locator('.toastui-editor-md-preview a[href*="leiras-jegyzet"]');
+  await expect(link).toHaveAttribute('target', '_blank');
+  const href = await link.getAttribute('href');
+  expect(href).toMatch(/^\/assets\/kb\/docs\/assets\/leiras-jegyzet-[0-9a-f]{8}\.zip$/);
+  const got = await request.get(href);
+  expect(await got.text()).toBe('PK e2e zip');
+  expect(got.headers()['content-disposition']).toContain('attachment');
+
+  // nem kép fájl behúzása a szerkesztőbe (a képeket továbbra is a Toast UI kezeli)
+  await page.keyboard.press('Enter');
+  await md(page).evaluate((el) => {
+    const dt = new DataTransfer();
+    dt.items.add(new File(['csv;adat'], 'meres.csv', { type: 'text/csv' }));
+    el.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+  });
+  await expect(md(page)).toContainText(/\[meres\.csv\]\(\.\.\/assets\/meres-[0-9a-f]{8}\.csv\)/);
+
+  const saved = page.waitForResponse((r) => r.url().endsWith('/api/file') && r.request().method() === 'PUT');
+  await layer(page).locator('.save').click();
+  const result = await (await saved).json();
+  expect(result.assets).toEqual(expect.arrayContaining([
+    expect.stringMatching(/^docs\/assets\/leiras-jegyzet-[0-9a-f]{8}\.zip$/),
+    expect.stringMatching(/^docs\/assets\/meres-[0-9a-f]{8}\.csv$/),
+  ]));
+  await expect(page.locator('.toast.success', { hasText: 'md-edit/docs__guide__install.md' })).toBeVisible();
+  // nézetben a link az /assets alá mutat, új lapon
+  await expect(layer(page).locator('.markdown-body a[href*="leiras-jegyzet"]')).toHaveAttribute('target', '_blank');
+  expect((await request.get(href)).ok()).toBe(true);
+  await discard(request, 'kb/docs/guide/install.md');
+  expect(errors).toEqual([]);
+});
+
 test('új fájl: létrehozás, mentés, megjelenik a fában', async ({ page, request }) => {
   await home(page);
   await page.click('#new-file');
@@ -254,6 +297,40 @@ test('WYSIWYG ↔ Markdown váltás: a módosítás megmarad, Ctrl+Z nem lép vi
   await expect(ww).toContainText('WWTESZT');
 });
 
+test('front matter: metaadat-táblázat, cím, keresés, a szerkesztő megőrzi', async ({ page, request }) => {
+  const errors = collectErrors(page);
+  const ww = page.locator('.toastui-editor-ww-container .ProseMirror');
+  const tab = (name) => page.click(`.toastui-editor-mode-switch .tab-item:has-text("${name}")`);
+  await home(page);
+  await expect(page.locator('a.file[data-path="kb/docs/jira-jegy.md"]')).toContainText('Proxy beállítás jegy'); // cím: title mező
+  await openFile(page, 'kb/docs/jira-jegy.md');
+  const fm = layer(page).locator('.markdown-body .front-matter');
+  await expect(fm.locator('tr:has(th:text-is("key")) td')).toHaveText('RBHUPE-2984');
+  await expect(fm.locator('tr:has(th:text-is("labels")) .fm-tag')).toHaveText(['SM-428535', 'squid-proxy']);
+  await expect(fm.locator('tr:has(th:text-is("url")) a')).toHaveAttribute('target', '_blank');
+  await expect(fm.locator('tr:has(th:text-is("created")) time')).toHaveText('2026-11-11 14:45');
+  await expect(fm.locator('tr:has(th:text-is("resolved")) .fm-empty')).toBeVisible();
+  await expect(layer(page).locator('.markdown-body hr')).toHaveCount(0); // nem vízszintes vonal + címsor
+  await expect(layer(page).locator('.markdown-body h1')).toHaveText(/Jira jegy/);
+
+  // a metaadatok értékei kereshetők
+  const res = await (await request.get('/api/search?q=' + encodeURIComponent('squid-proxy'))).json();
+  expect(JSON.stringify(res)).toContain('kb/docs/jira-jegy.md');
+
+  // szerkesztés: a front matter megmarad (WYSIWYG váltás után is), az előnézetben nem jelenik meg szövegként
+  await layer(page).locator('button.edit').click();
+  await expect(md(page)).toContainText('key: "RBHUPE-2984"');
+  await expect(page.locator('.toastui-editor-md-preview h1')).toHaveText(/Jira jegy/);
+  await expect(page.locator('.toastui-editor-md-preview hr')).toHaveCount(0);
+  await expect(page.locator('.toastui-editor-md-preview').getByText('RBHUPE-2984')).toBeHidden();
+  await tab('WYSIWYG');
+  await expect(ww).toContainText('Jira jegy');
+  await tab('Markdown');
+  await expect(md(page)).toContainText('labels: ["SM-428535", "squid-proxy"]');
+  await expect(md(page)).toContainText('# Jira jegy');
+  expect(errors).toEqual([]);
+});
+
 test('emoji választó: keresés, beszúrás', async ({ page }) => {
   await home(page);
   await page.click('li.frow:has(a[data-path="kb/docs/env.md"]) .fedit');
@@ -284,6 +361,25 @@ test('sötét téma: váltás, megjegyzés, a szerkesztő is sötét', async ({ 
   await page.evaluate(() => localStorage.removeItem('theme'));
 });
 
+test('keresés: hosszabb szövegrészlet, sötét témában is olvasható kiemelés', async ({ page }) => {
+  await home(page);
+  await page.evaluate(() => localStorage.setItem('theme', 'dark'));
+  await page.reload();
+  await page.fill('#search-content', 'vízilóka');
+  const snip = page.locator('.result[data-path="kb/docs/hosszu-bekezdes.md"] .rsnip');
+  await expect(snip.locator('mark')).toHaveText('Vízilóka');
+  const text = await snip.innerText();
+  expect(text.length).toBeGreaterThan(400); // kb. 160 karakter előtte, 360 utána
+  expect(text).toMatch(/^…\S/); // szóhatáron kezdődik (nem csonka szóval)
+  expect(text).toMatch(/\S…$/);
+  // a kiemelt szöveg színe a téma szövegszíne (nem a böngésző alapértelmezett fekete <mark> színe)
+  const [color, fg] = await snip.locator('mark').evaluate((el) => [getComputedStyle(el).color,
+    getComputedStyle(document.body).color]);
+  expect(color).toBe(fg);
+  expect(color).not.toBe('rgb(0, 0, 0)');
+  await page.evaluate(() => localStorage.removeItem('theme'));
+});
+
 test('API: bemenet-ellenőrzés és biztonság', async ({ request }) => {
   const up = (q, type, data) => request.post(`/api/upload?${q}`, { headers: { 'content-type': type }, data });
   expect((await up('doc=kb/docs/a.md&name=x.txt', 'text/plain', 'hello')).status()).toBe(415);
@@ -298,6 +394,30 @@ test('API: bemenet-ellenőrzés és biztonság', async ({ request }) => {
   const svg = await up('doc=kb/docs/a.md&name=x.svg', 'image/svg+xml', '<svg xmlns="http://www.w3.org/2000/svg"><script>1</script></svg>');
   const res = await request.get(`/assets/${(await svg.json()).path}`);
   expect(res.headers()['content-security-policy']).toContain('sandbox');
+});
+
+test('API: fájl feltöltés, letöltésként kiszolgálva, link / hivatkozás is a commitba kerül', async ({ request }) => {
+  const up = (q, type, data) => request.post(`/api/upload?${q}`, { headers: { 'content-type': type }, data });
+  expect((await up('doc=kb/docs/a.md&name=x.md&kind=file', 'text/markdown', '# x')).status()).toBe(415);
+  expect((await up('doc=kb/docs/a.md&name=x.html', 'text/html', '<b>x</b>')).status()).toBe(415); // képként nem
+  const html = await (await up('doc=kb/docs/a.md&name=../evil.html&kind=file', 'text/html', '<script>alert(1)</script>')).json();
+  expect(html.path).toMatch(/^kb\/docs\/assets\/evil-[0-9a-f]{8}\.html$/);
+  const res = await request.get(`/assets/${html.path}`);
+  expect(res.headers()['content-disposition']).toContain('attachment');
+  expect(res.headers()['content-security-policy']).toContain('sandbox');
+  expect(res.headers()['x-content-type-options']).toBe('nosniff');
+  const noext = await (await up('doc=kb/docs/a.md&name=Makefile&kind=file', 'application/octet-stream', 'all:')).json();
+  expect(noext.path).toMatch(/^kb\/docs\/assets\/makefile-[0-9a-f]{8}$/);
+  // a képek továbbra is a böngészőben nyílnak meg
+  const png = await (await up('doc=kb/docs/a.md&name=p.png', 'image/png', Buffer.from('x'))).json();
+  expect((await request.get(`/assets/${png.path}`)).headers()['content-disposition']).toBeUndefined();
+
+  const txt = await (await up('doc=kb/docs/yaml.md&name=jegyzet.txt&kind=file', 'text/plain', 'hello')).json();
+  const file = await (await request.get('/api/file?path=kb/docs/yaml.md')).json();
+  const content = `${file.content}\n[jegyzet](assets/${txt.path.split('/').pop()})\n\n[ref]: <assets/${noext.path.split('/').pop()}>\n`;
+  const put = await (await request.put('/api/file', { data: { path: 'kb/docs/yaml.md', content } })).json();
+  expect(put.assets.sort()).toEqual([txt.path, noext.path].map((p) => p.replace(/^kb\//, '')).sort());
+  await discard(request, 'kb/docs/yaml.md');
 });
 
 // ---------- Több repó ----------
@@ -372,6 +492,33 @@ test('új fájl a gyökér könyvtáras repóban', async ({ page, request }) => 
   await expect(page.locator('a.file[data-path="masik/e2e-masik.md"] .badge.new')).toBeVisible();
   await expect(page.locator('a.file[data-path="kb/docs/e2e-masik.md"]')).toHaveCount(0);
   await discard(request, 'masik/e2e-masik.md');
+});
+
+test('sync lenyíló: egy repó vagy az összes frissítése', async ({ page }) => {
+  await home(page);
+  const menu = page.locator('#sync-menu');
+  await page.click('#sync');
+  await expect(menu).toBeVisible();
+  await expect(menu.locator('.sync-opt')).toHaveText([/All repositories/, /kb/, /masik/]);
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+
+  const log = page.locator('#sync-dialog .sync-log');
+  await page.click('#sync');
+  await menu.locator('.sync-opt[data-repo="masik"]').click();
+  await expect(menu).toBeHidden();
+  await expect(page.locator('#sync-dialog .sync-state')).toHaveText('done', { timeout: 30000 });
+  await expect(log).toContainText('Sync started: 1 repository');
+  await expect(log).toContainText('━━ masik:');
+  await expect(log).not.toContainText('━━ kb:');
+  await page.locator('#sync-dialog .sync-close').click();
+
+  await page.click('#sync');
+  await menu.locator('.sync-opt.all').click();
+  await expect(page.locator('#sync-dialog .sync-state')).toHaveText('done', { timeout: 30000 });
+  await expect(log).toContainText('Sync started: 2 repositories');
+  await page.locator('#sync-dialog .sync-close').click();
+  await expect(page.locator('a.file[data-path="kb/docs/env.md"]')).toBeAttached();
 });
 
 test('repókezelés: felvétel a felületről, letöltés, eltávolítás', async ({ page }) => {

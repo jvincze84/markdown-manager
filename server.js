@@ -35,6 +35,13 @@ const { uploadsDir } = cfg; // feltöltött, még nem mentett képek: <uploadsDi
 app.use('/assets', (req, res, next) => {
   // SVG-ben lehet script → közvetlen megnyitáskor se fusson le
   if (/\.svg$/i.test(req.path)) res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+  // Csatolt (nem kép) fájlok: letöltésként, hogy pl. egy feltöltött HTML ne fusson le az app origin-jén
+  const ext = (req.path.match(/\.([a-z0-9]+)$/i)?.[1] || '').toLowerCase();
+  res.set('X-Content-Type-Options', 'nosniff');
+  if (!INLINE_EXTS.has(ext)) {
+    res.set('Content-Security-Policy', "default-src 'none'; sandbox");
+    res.attachment(path.posix.basename(req.path));
+  }
   // csak felvett repó alól szolgálunk ki fájlt
   let id = '';
   try { id = decodeURIComponent(req.path.split('/')[1] || ''); } catch { /* érvénytelen */ }
@@ -87,6 +94,10 @@ async function saveLastSync() {
 // ---------- Képek ----------
 
 const IMAGE_TYPES = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' };
+// Az /assets alól a böngészőben megnyitható kiterjesztések; minden más letöltésként (Content-Disposition: attachment)
+const INLINE_EXTS = new Set([...Object.keys(IMAGE_TYPES), 'md', 'markdown', 'txt', 'pdf']);
+// Csatolmányként nem tölthető fel (markdown dokumentum: azt az „＋ New file”-lal kell létrehozni)
+const BLOCKED_FILE_EXTS = new Set(['md', 'markdown']);
 const extOf = (p) => (p.match(/\.([a-z0-9]+)$/i)?.[1] || '').toLowerCase();
 
 /** Repo-relatív / virtuális útvonal ellenőrzése (nincs .., nincs rejtett elem). */
@@ -114,34 +125,46 @@ app.use('/assets', wrapNext(async (req, res, next) => {
   next();
 }));
 
-/** Feltöltött kép neve: ékezet nélküli, biztonságos alapnév + tartalom hash (ugyanaz a kép = ugyanaz a fájl). */
-function assetName(original, data, mime) {
-  const ext = extOf(original) in IMAGE_TYPES ? extOf(original)
-    : Object.keys(IMAGE_TYPES).find((k) => IMAGE_TYPES[k] === mime) || null;
-  if (!ext) return null;
-  const base = path.posix.basename(original || '', path.extname(original || ''))
+/**
+ * Feltöltött fájl neve: ékezet nélküli, biztonságos alapnév + tartalom hash (ugyanaz a tartalom = ugyanaz a fájl).
+ * Kép (alapértelmezés): csak a képformátumok (kiterjesztés vagy MIME típus alapján); null = nem támogatott.
+ * Fájl (file=true): bármilyen kiterjesztés (kivéve markdown), kiterjesztés nélkül is.
+ */
+function assetName(original, data, mime, { file = false } = {}) {
+  const orig = path.posix.basename(String(original || '').replace(/\\/g, '/'));
+  let ext;
+  if (file) {
+    ext = /^[a-z0-9]{1,10}$/.test(extOf(orig)) ? extOf(orig) : '';
+    if (BLOCKED_FILE_EXTS.has(ext)) return null;
+  } else {
+    ext = extOf(orig) in IMAGE_TYPES ? extOf(orig) : Object.keys(IMAGE_TYPES).find((k) => IMAGE_TYPES[k] === mime) || null;
+    if (!ext) return null;
+  }
+  const base = path.posix.basename(orig, ext ? path.extname(orig) : '')
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-').replace(/^[-.]+|[-.]+$/g, '').slice(0, 60) || 'image';
+    .replace(/[^a-z0-9._-]+/g, '-').replace(/^[-.]+|[-.]+$/g, '').slice(0, 60) || (file ? 'file' : 'image');
   const hash = crypto.createHash('sha1').update(data).digest('hex').slice(0, 8);
-  return `${base}-${hash}.${ext === 'jpeg' ? 'jpg' : ext}`;
+  return `${base}-${hash}${ext ? `.${ext === 'jpeg' ? 'jpg' : ext}` : ''}`;
 }
 
 /**
- * A markdownban hivatkozott, feltöltött (még nem mentett) képek: [{ path (repó-relatív), data }].
+ * A markdownban hivatkozott, feltöltött (még nem mentett) képek és fájlok: [{ path (repó-relatív), data }].
+ * Hivatkozás: kép / link (`![..](x)`, `[..](x)`, `[id]: x`) vagy HTML `src` / `href`.
  * docPath: a dokumentum virtuális útvonala; a "/" kezdetű hivatkozás a repó gyökeréhez képest értendő.
  */
 async function pendingAssets(docPath, content) {
   const root = docPath.split('/')[0];
   const refs = new Set();
-  for (const m of content.matchAll(/!\[[^\]]*\]\(\s*<?([^)\s>]+)/g)) refs.add(m[1]);
-  for (const m of content.matchAll(/<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/gi)) refs.add(m[1]);
+  for (const m of content.matchAll(/\]\(\s*<?([^)\s>]+)/g)) refs.add(m[1]);
+  for (const m of content.matchAll(/^ {0,3}\[[^\]]+\]:\s*<?([^\s>]+)/gm)) refs.add(m[1]);
+  for (const m of content.matchAll(/<(?:img|a|source|video|audio)\b[^>]*\b(?:src|href)\s*=\s*["']([^"']+)["']/gi)) refs.add(m[1]);
   const out = [];
   for (const ref of refs) {
     if (/^[a-z][a-z0-9+.-]*:|^\/\//i.test(ref)) continue; // abszolút URL / data:
     let r = ref.split(/[?#]/)[0];
     try { r = decodeURIComponent(r); } catch { /* marad */ }
     const vp = safeRepoPath(r.startsWith('/') ? `${root}/${r}` : path.posix.join(path.posix.dirname(docPath), r));
-    if (!vp || !vp.startsWith(`${root}/`) || !(extOf(vp) in IMAGE_TYPES)) continue;
+    if (!vp || !vp.startsWith(`${root}/`) || BLOCKED_FILE_EXTS.has(extOf(vp))) continue;
     const data = await fs.readFile(path.join(uploadsDir, vp)).catch(() => null);
     if (data) out.push({ path: vp.slice(root.length + 1), data });
   }
@@ -492,16 +515,20 @@ app.delete('/api/file', wrap(async (req, res) => {
   res.json({ ...result, path: p, prUrl: result.removed ? null : ctx.git.pullRequestUrl(result.branch) });
 }));
 
-// Kép feltöltése (az editor „kép beszúrása” / beillesztés / behúzás): a szerveren várakozik,
-// és a markdown fájl következő mentésekor ugyanabba a commitba kerül.
+// Kép (az editor „kép beszúrása” / beillesztés / behúzás) vagy fájl (kind=file: „📎 Attach file”, nem kép
+// behúzása) feltöltése: a szerveren várakozik, és a markdown fájl következő mentésekor ugyanabba a commitba kerül.
 app.post('/api/upload', express.raw({ type: () => true, limit: '20mb' }), wrap(async (req, res) => {
   const doc = safeRepoPath(req.query.doc);
   const r = doc && resolve(doc);
   if (!r) throw httpError(400, 'Missing or invalid document path.');
   const data = req.body;
   if (!Buffer.isBuffer(data) || !data.length) throw httpError(400, 'Empty file.');
-  const name = assetName(String(req.query.name || ''), data, String(req.headers['content-type'] || '').split(';')[0]);
-  if (!name) throw httpError(415, `Unsupported image format (${Object.keys(IMAGE_TYPES).join(', ')}).`);
+  const file = req.query.kind === 'file';
+  const name = assetName(String(req.query.name || ''), data, String(req.headers['content-type'] || '').split(';')[0], { file });
+  if (!name) {
+    throw httpError(415, file ? 'Markdown files cannot be attached; create them with “＋ New file”.'
+      : `Unsupported image format (${Object.keys(IMAGE_TYPES).join(', ')}).`);
+  }
   const vp = `${r.ctx.id}/${r.ctx.cfg.assetsPath ? `${r.ctx.cfg.assetsPath}/` : ''}${name}`;
   const target = path.join(uploadsDir, vp);
   await fs.mkdir(path.dirname(target), { recursive: true });

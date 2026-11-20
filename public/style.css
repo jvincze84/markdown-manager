@@ -79,7 +79,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 .rhead .fname { font-weight: 600; color: var(--accent); }
 .rpath { font-size: 12px; color: var(--fg-muted); font-family: ui-monospace, monospace; }
 .rsnip { margin-top: 4px; color: var(--fg-muted); font-size: 13px; }
-.rsnip mark { background: var(--warn-bg); padding: 0 1px; border-radius: 2px; }
+.rsnip mark { background: var(--hit); color: var(--fg); padding: 0 1px; border-radius: 2px; }
 
 /* ---------- Layer ---------- */
 .layer { position: fixed; inset: 0; z-index: calc(100 + var(--depth, 0)); }
@@ -116,6 +116,17 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 .layer-body .editor { flex: 1; min-width: 0; }
 .markdown-body pre.mermaid { background: transparent; text-align: center; }
 .markdown-body .header-anchor { color: inherit; text-decoration: none; }
+/* Front matter (YAML metaadatok) */
+.markdown-body .front-matter { margin: 0 0 24px; padding: 8px 14px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
+.markdown-body .front-matter table { display: table; width: 100%; margin: 0; border: 0; background: transparent; }
+.markdown-body .front-matter tr { background: transparent !important; border: 0; }
+.markdown-body .front-matter th, .markdown-body .front-matter td { padding: 3px 8px; border: 0; text-align: left; vertical-align: top; background: transparent; }
+.markdown-body .front-matter th { width: 1%; white-space: nowrap; color: var(--fg-muted); font-weight: 600; }
+.markdown-body .front-matter td { word-break: break-word; }
+.markdown-body .front-matter td table th { width: 1%; }
+.markdown-body .front-matter .fm-tag { display: inline-block; padding: 0 8px; margin: 1px 0; border-radius: 10px; background: var(--accent-bg); color: var(--accent); font-size: 12px; line-height: 20px; }
+.markdown-body .front-matter .fm-empty { color: var(--fg-subtle); }
+.markdown-body .front-matter pre { margin: 0; }
 
 /* ---------- Toast ---------- */
 .toasts { position: fixed; right: 16px; bottom: 16px; z-index: 1000; display: flex; flex-direction: column; gap: 8px; max-width: 480px; }
@@ -186,7 +197,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 .hit-count { padding: 0 8px; color: var(--warn-fg); font-variant-numeric: tabular-nums; }
 .hit-nav button { height: 100%; width: 28px; border: 0; border-left: 1px solid var(--warn-border); background: transparent; cursor: pointer; font-size: 14px; }
 .hit-nav button:hover { background: var(--hit); }
-.rpath mark { background: var(--warn-bg); border-radius: 2px; }
+.rpath mark { background: var(--hit); color: var(--fg); border-radius: 2px; }
 
 /* ---------- Diff nézet / eldobás ---------- */
 .btn.danger { color: var(--danger-text); }
@@ -335,6 +346,8 @@ a.fhash:hover { color: var(--accent); border-color: var(--accent); }
 /* ---------- Emoji választó ---------- */
 .toastui-editor-toolbar-icons.emoji-btn { background: none; font-size: 17px; line-height: 1; filter: grayscale(.2); }
 .toastui-editor-toolbar-icons.emoji-btn:hover { filter: none; }
+.toastui-editor-toolbar-icons.attach-btn { background: none; font-size: 16px; line-height: 1; filter: grayscale(.3); }
+.toastui-editor-toolbar-icons.attach-btn:hover { filter: none; }
 .toastui-editor-popup.emoji-popup { padding: 0; }
 .toastui-editor-popup.emoji-popup .toastui-editor-popup-body { padding: 0; }
 .emoji-picker { width: 356px; display: flex; flex-direction: column; font-size: 13px; color: var(--fg); background: var(--surface); }
@@ -371,6 +384,11 @@ a.fhash:hover { color: var(--accent); border-color: var(--accent); }
 .repo-opt .repo-id { font-weight: 600; }
 .repo-opt .muted { flex: 1; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .repo-opt .count { min-width: 20px; padding: 0 6px; border-radius: 10px; background: var(--neutral-bg); font-size: 12px; text-align: center; }
+.sync-wrap { position: relative; }
+.sync-menu { left: auto; right: 0; }
+.sync-opt { width: 100%; border: 0; background: transparent; color: var(--fg); text-align: left; font: inherit; font-size: 13px; }
+.sync-opt.all { font-weight: 600; border-bottom: 1px solid var(--border); border-radius: 6px 6px 0 0; margin-bottom: 4px; }
+.sync-opt .err { color: var(--danger, #cf222e); font-size: 12px; }
 .repo-menu-foot { display: flex; justify-content: flex-end; gap: 6px; padding: 6px 4px 2px; border-top: 1px solid var(--border); margin-top: 4px; }
 .repo-node { font-weight: 600; }
 .repo-path { margin-left: 8px; font-size: 12px; font-weight: normal; }

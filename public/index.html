@@ -37,7 +37,10 @@
     <button id="new-file" class="btn" title="Create a new markdown file">＋ New file</button>
     <button id="manage-repos" class="btn" title="Add, edit, remove repositories">⚙ Repos</button>
     <button id="theme-toggle" class="btn" title="Theme: auto"></button>
-    <button id="sync" class="btn primary" title="Download / update all repositories">⟳ Sync</button>
+    <div class="sync-wrap">
+      <button id="sync" class="btn primary" title="Download / update repositories">⟳ Sync ▾</button>
+      <div id="sync-menu" class="repo-menu sync-menu" hidden></div>
+    </div>
   </header>
   <div id="status" class="statusbar">Loading…</div>
 

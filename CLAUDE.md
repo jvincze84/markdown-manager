@@ -12,7 +12,8 @@ a pull requestet a felhasználó nyitja meg kézzel. A felhasználói dokumentá
 - Git: **csak lokális repó**, nincs remote – ne push-olj. Commitolni csak kérésre.
 
 ## Verziók, release
-- Kiadott verziók: `v1.0.0` (+ `release/1.0` branch) – egy-repós változat; `v2.0.0` (+ `release/2.0`) – több repós változat.
+- Kiadott verziók: `v1.0.0` (+ `release/1.0` branch) – egy-repós változat; `v2.0.0` (+ `release/2.0`) – több repós változat;
+  `v2.1.0` (+ `release/2.1`) – angol felület, idézőjeles kifejezéskeresés, egy repó több könyvtárral.
 - Release menete (kérésre): `tests/run.sh` zöld → verzió emelés a `package.json`-ban **és** a `package-lock.json`
   két helyén → commit → annotált tag (`git tag -a vX.Y.Z -m "vX.Y.Z – rövid leírás"`) → `release/X.Y` branch a tagre.
 - Főverzió, ha a beállítás (env / adatformátum) nem visszafelé kompatibilis; ilyenkor a README „Átállás” részét is frissítsd.
@@ -43,7 +44,7 @@ Helyben **nincs Node** – minden Dockerben fut.
 | `lib/config.js` | env változók (lásd `.env.example`); `parseGitUrl`: szerver URL vs. régi `.git` végű repó URL |
 | `lib/repos.js` | felvett repók: `repos.json` olvasás/írás, bemenet-ellenőrzés (`normalize`), régi egy-repós beállítás átvétele (`loadOrMigrate`) |
 | `lib/git.js` | közös: `run()` (askpass, CA, redact); repónként `forRepo(repo)`: partial clone + sparse checkout sync, `prepareBranch`/`commitAndPush` (temp index, munkakönyvtár érintése nélkül), `saveFile`, `deleteFile`, `deleteBranch`, `diffFile`, `revDiff`, `fileHistory`, `fileCommits`, `listEditBranches` |
-| `lib/docs.js` | markdown-it renderelés (Prism színezés, mermaid, relatív linkek/képek → `/assets`), repónkénti dokumentumtár, közös MiniSearch index, keresés (`query`, repó szűréssel) |
+| `lib/docs.js` | markdown-it renderelés (Prism színezés, mermaid, relatív linkek/képek → `/assets`, YAML front matter → metaadat-táblázat `js-yaml`-lel), repónkénti dokumentumtár, közös MiniSearch index, keresés (`query`, repó szűréssel) |
 | `lib/prism-extend.js` | **közös** a szerver és a böngésző között: nyelv-aliasok, bash parancs-/kapcsolófelismerés |
 | `public/app.js` | teljes kliens (vanilla JS, egy IIFE): fa, keresés, repó szűrő, repókezelő, rétegek (`class Layer`), szerkesztő, diff, előzmények, téma, emoji választó |
 | `public/mdtable.js` | markdown táblázat-igazító (böngészőben és egységtesztben is fut) |
@@ -70,14 +71,16 @@ Helyben **nincs Node** – minden Dockerben fut.
   (`branchName`). Minden commit üzenet végén `File: <útvonal>` trailer – ebből ismeri fel az app a fájlt.
 - Állapotok: **módosított** (branch-en más tartalom), **új** (csak branch-en létezik, `isNew`),
   **törölt** (branch-en törlő commit, `isDeleted`). „Eldobás” = a branch törlése a szerverről.
-- Feltöltött képek: `/data/uploads/<repó>/<repo útvonal>` → mentéskor a markdownban hivatkozottak ugyanabba a commitba kerülnek.
+- Feltöltött képek és csatolt fájlok (`/api/upload?kind=file`): `/data/uploads/<repó>/<repo útvonal>` → mentéskor a markdownban
+  hivatkozottak (kép, link, ref-definíció, HTML src/href; `pendingAssets`) ugyanabba a commitba kerülnek.
+  Az `/assets` csak az `INLINE_EXTS` (képek, md, txt, pdf) fájlokat adja inline, minden mást `attachment` + sandbox CSP-vel.
 - Partial clone miatt: `git log`/`diff` hívásoknál `--no-renames` (különben blobokat töltene le); `--follow` nincs.
 
 ### API röviden
 (`path` mindig virtuális útvonal.)
 `GET /api/status`, `/api/repos`, `/api/files`, `/api/search?name=&q=&repos=a,b`, `/api/file?path=&source=base|branch&rev=`,
 `/api/history?path=`, `/api/diff?path=[&rev=]`, `/api/sync/log?since=`;
-`POST /api/sync` (`{repos?: [id]}`), `/api/repos` (felvétel), `/api/file` (új: `{repo, path}`), `/api/upload?doc=&name=`;
+`POST /api/sync` (`{repos?: [id]}`), `/api/repos` (felvétel), `/api/file` (új: `{repo, path}`), `/api/upload?doc=&name=[&kind=file]`;
 `PUT /api/file` (mentés), `/api/repos/:id` (módosítás); `DELETE /api/file` (törlés), `/api/branch` (eldobás), `/api/repos/:id`.
 
 ## Buktatók (tapasztalatok)
@@ -89,6 +92,7 @@ Helyben **nincs Node** – minden Dockerben fut.
   - Egyedi eszköztár gomb: `insertToolbarItem` `command`-dal vagy `popup`-pal (ne `el`-lel). Felugró bezárása: `editor.eventEmitter.emit('closePopup')`.
   - Markdown módban a beillesztés egy rejtett `.toastui-editor-pseudo-clipboard` textarea-n fut.
   - A `customHTMLRenderer.image` a WYSIWYG módban is érvényes (relatív képútvonalak feloldása).
+  - `insertToolbarItem` újrarajzolja a szomszédos elemeket → az utólag rátett DOM eseménykezelő (emoji gomb) elveszhet; az emoji gombot utolsóként vesszük fel.
   - `destroy()` késleltetve (rejtett szerkesztő újrarajzolása DOM hibát dobna).
   - A code-syntax-highlight plugin CSS-e globálisan `overflow: visible`-t tesz a `pre[class*=language-]`-re → felülírva.
 - A Prism nyelvi komponensek a globális `Prism`-re épülnek → `build/prism-setup.js` előbb fut.

@@ -459,7 +459,7 @@
   function setSyncButton(running) {
     const btn = $('#sync');
     btn.classList.toggle('running', running);
-    btn.textContent = running ? '⟳ Syncing…' : '⟳ Sync';
+    btn.textContent = running ? '⟳ Syncing…' : '⟳ Sync ▾';
   }
 
   function openSyncDialog() {
@@ -541,7 +541,33 @@
     }
     followSync();
   }
-  $('#sync').addEventListener('click', () => startSyncFor(null));
+
+  // Sync gomb: lenyíló („All repositories” + repónként); futó sync alatt csak a naplót nyitja meg.
+  const syncMenu = $('#sync-menu');
+  function renderSyncMenu() {
+    syncMenu.innerHTML = `<button class="repo-opt sync-opt all" data-repo="">⟳ All repositories</button>`
+      + repoList().map((r) => `
+      <button class="repo-opt sync-opt" data-repo="${esc(r.id)}" title="${esc(r.url || r.path)}">
+        <span class="repo-id">${esc(r.id)}</span>
+        <span class="muted">${esc(r.path)}${r.docsPath ? ` /${esc(r.docsPath)}` : ''}</span>
+        ${r.error ? `<span class="err" title="${esc(r.error)}">error</span>`
+          : `<span class="muted sync-when">${r.lastSync ? esc(relTime(r.lastSync)) : 'never'}</span>`}
+      </button>`).join('');
+  }
+  $('#sync').addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (following || !repoList().length) { syncMenu.hidden = true; startSyncFor(null); return; }
+    if (syncMenu.hidden) renderSyncMenu();
+    syncMenu.hidden = !syncMenu.hidden;
+  });
+  syncMenu.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const opt = e.target.closest('.sync-opt');
+    if (!opt) return;
+    syncMenu.hidden = true;
+    startSyncFor(opt.dataset.repo ? [opt.dataset.repo] : null);
+  });
+  document.addEventListener('click', () => { syncMenu.hidden = true; });
 
   // ---------- Repók kezelése ----------
 
@@ -1068,6 +1094,7 @@
           el: this.q('.editor'),
           height: '100%',
           initialEditType: 'markdown',
+          frontMatter: true, // a fájl eleji YAML metaadat-blokk (--- ... ---) érintetlen marad
           previewStyle: localStorage.getItem('previewStyle') || 'vertical',
           initialValue: content,
           usageStatistics: false,
@@ -1086,9 +1113,20 @@
                 attributes: { src: resolveAssetUrl(this.docPath(), node.destination), alt, ...(node.title ? { title: node.title } : {}) },
               };
             },
+            // Relatív, nem markdown hivatkozás (pl. csatolt fájl) → /assets, új lapon (mint a nézetben)
+            link: (node, { entering, origin }) => {
+              const tok = origin();
+              const href = node.destination || '';
+              if (entering && href && !/^[a-z][a-z0-9+.-]*:|^\/\/|^#/i.test(href) && !/\.(md|markdown)(#|$)/i.test(href)) {
+                tok.attributes = { ...tok.attributes, href: resolveAssetUrl(this.docPath(), href), target: '_blank' };
+              }
+              return tok;
+            },
           },
         });
         this.addTableFormatButton();
+        // Az emoji gomb utolsóként: utána beszúrt eszköztár elem újrarajzolná, és elveszne a kattintás-kezelője
+        this.addAttachButton();
         this.addEmojiButton();
         // Módváltáskor a Toast UI a teljes dokumentumot egy visszavonható lépéssel cseréli le; Ctrl+Z-re ez
         // visszaállna a másik mód elavult állapotára (WYSIWYG → Markdown után elvesznének a WYSIWYG
@@ -1124,7 +1162,7 @@
           this.editor.focus();
         }
       });
-      this.editor.insertToolbarItem({ groupIndex: 3, itemIndex: 4 }, {
+      this.editor.insertToolbarItem({ groupIndex: 3, itemIndex: 5 }, {
         name: 'emoji',
         tooltip: 'Insert emoji',
         className: 'toastui-editor-toolbar-icons emoji-btn',
@@ -1133,6 +1171,54 @@
       });
       // megnyitáskor: adat betöltése (első alkalommal) és fókusz a keresőbe
       this.q('.emoji-btn')?.addEventListener('click', () => setTimeout(() => picker.open(), 0));
+    }
+
+    /** „📎 Attach file” gomb + nem kép fájlok behúzása / beillesztése: feltöltés az assets könyvtárba, link beszúrása. */
+    addAttachButton() {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.multiple = true;
+      input.hidden = true;
+      input.className = 'attach-input';
+      this.q('.editor').after(input);
+      input.addEventListener('change', () => {
+        const list = [...input.files];
+        input.value = '';
+        this.attachFiles(list);
+      });
+      const run = () => { input.click(); return true; };
+      this.editor.addCommand('markdown', 'attachFile', run);
+      this.editor.addCommand('wysiwyg', 'attachFile', run);
+      this.editor.insertToolbarItem({ groupIndex: 3, itemIndex: 3 }, {
+        name: 'attachFile',
+        tooltip: 'Attach file (uploaded to the assets folder, committed on save)',
+        className: 'toastui-editor-toolbar-icons attach-btn',
+        text: '📎',
+        command: 'attachFile',
+      });
+      // A képeket a Toast UI kezeli (addImageBlobHook); ha nem kép fájl is van köztük, mindet mi töltjük fel
+      const isImage = (f) => /^image\//.test(f.type);
+      const takeOver = (e, files) => {
+        if (!files.length || files.every(isImage)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        this.attachFiles(files);
+      };
+      const root = this.q('.editor');
+      root.addEventListener('drop', (e) => takeOver(e, [...(e.dataTransfer?.files || [])]), true);
+      root.addEventListener('paste', (e) => takeOver(e, [...(e.clipboardData?.files || [])]), true);
+    }
+
+    async attachFiles(list) {
+      for (const f of list) {
+        const image = /^image\//.test(f.type);
+        const r = await this.uploadFile(f, image ? 'image' : 'file');
+        if (!r) continue;
+        const text = f.name.replace(/[[\]]/g, '');
+        if (image) this.editor.exec('addImage', { imageUrl: r.url, altText: text.replace(/\.[^.]+$/, '') });
+        else this.editor.exec('addLink', { linkUrl: r.url, linkText: text || 'file' });
+      }
+      this.editor.focus();
     }
 
     formatTables() {
@@ -1176,22 +1262,32 @@
     }
 
     async uploadImage(blob, callback) {
-      const name = blob.name || `image.${(blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg').replace('svg+xml', 'svg')}`;
+      const r = await this.uploadFile(blob, 'image');
+      if (r) callback(r.url, r.name.replace(/\.[^.]+$/, ''));
+    }
+
+    /** Feltöltés az assets könyvtárba (kind: image | file) → { path, url, name } vagy null (hiba: toast). */
+    async uploadFile(blob, kind) {
+      const name = blob.name || (kind === 'image'
+        ? `image.${(blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg').replace('svg+xml', 'svg')}` : 'file');
+      const label = kind === 'image' ? 'Image' : 'File';
       const doc = this.docPath();
-      const t = toast(`Uploading image: ${esc(name)}…`, 'info', 30000);
+      const t = toast(`Uploading ${label.toLowerCase()}: ${esc(name)}…`, 'info', 30000);
       try {
-        const res = await fetch(`/api/upload?doc=${encodeURIComponent(doc)}&name=${encodeURIComponent(name)}`, {
+        const q = `doc=${encodeURIComponent(doc)}&name=${encodeURIComponent(name)}${kind === 'file' ? '&kind=file' : ''}`;
+        const res = await fetch(`/api/upload?${q}`, {
           method: 'POST', headers: { 'Content-Type': blob.type || 'application/octet-stream' }, body: blob,
         });
         const r = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(r.error || res.statusText);
+        if (!res.ok) throw new Error(r.error || (res.status === 413 ? 'File is too large (max. 20 MB).' : res.statusText));
         (this.uploads ||= []).push({ path: r.path, url: r.url, doc });
-        callback(r.url, name.replace(/\.[^.]+$/, ''));
         t?.remove?.();
-        toast(`Image uploaded: <code>${esc(r.path)}</code> — it will be part of the commit when you save.`, 'success');
+        toast(`${label} uploaded: <code>${esc(r.path)}</code> — it will be part of the commit when you save.`, 'success');
+        return { ...r, name };
       } catch (e) {
         t?.remove?.();
-        toast(`Image upload error: ${esc(e.message)}`, 'error', 10000);
+        toast(`${label} upload error: ${esc(e.message)}`, 'error', 10000);
+        return null;
       }
     }
 
@@ -1621,7 +1717,10 @@
   }
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !repoDlg.hidden) {
+    if (e.key === 'Escape' && !syncMenu.hidden) {
+      e.preventDefault();
+      syncMenu.hidden = true;
+    } else if (e.key === 'Escape' && !repoDlg.hidden) {
       e.preventDefault();
       closeRepoDialog();
     } else if (e.key === 'Escape' && layers.length) {
