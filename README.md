@@ -4,6 +4,26 @@
 
 A Dockerized web application that downloads the `*.md` files from a given directory of one or more repositories on a git server, renders them nicely, makes them searchable and lets you edit them. Saving pushes to a per-file branch. The git server and the token are set via environment variables; repositories are added on the web UI.
 
+## Screenshots
+
+## Main Screen
+
+<img width="1485" height="609" alt="opera_IZ3Iz3L7IN" src="https://github.com/user-attachments/assets/09f342df-de68-461c-bc72-fb4eda8d7e61" />
+
+## Editor
+
+<img width="1497" height="706" alt="opera_UYDkKQIytl" src="https://github.com/user-attachments/assets/9b1555f0-fee6-47b4-bf03-56ab1be9cfc9" />
+
+## Pull Request
+
+<img width="1427" height="88" alt="opera_LdUYE6YLT9" src="https://github.com/user-attachments/assets/c684b0da-c438-46b0-b850-0be30af424c8" />
+
+## History
+
+
+<img width="548" height="190" alt="opera_hCngY8Iplj" src="https://github.com/user-attachments/assets/d26d432f-37d0-41b1-ad0e-cc2caaf16332" />
+
+
 ## Getting started
 
 ```bash
