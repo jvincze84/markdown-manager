@@ -2,12 +2,12 @@
 
 Dockerizált Node.js webapp: egy git szerver egy vagy több repójának (a felületen felvéve) egy-egy könyvtárából
 letölti a `*.md` fájlokat, megjeleníti, kereshetővé és szerkeszthetővé teszi őket. Mentéskor **fájlonként egy branch**-re commitol és push-ol,
-a pull requestet a felhasználó nyitja meg kézzel. A felhasználói dokumentáció: `README.md`.
+a pull requestet a felhasználó nyitja meg kézzel. A felhasználói dokumentáció: `README.md` (angol) és `README.hu.md` (magyar).
 
 ## Együttműködés
-- A felhasználó **magyarul** ír, magyarul válaszolj. A kód kommentjei és a README magyarok.
+- A felhasználó **magyarul** ír, magyarul válaszolj. A kód kommentjei magyarok; a README két nyelvű: `README.md` angol, `README.hu.md` magyar – mindkettőt tartsd szinkronban.
 - A **felület angol** (gombok, üzenetek, sync napló, API hibaüzenetek, konzol), egynyelvű – nincs i18n. Új szöveg is angolul kerüljön be.
-- Minden új funkció után frissítsd a `README.md`-t (funkciólista / env változók).
+- Minden új funkció után frissítsd a `README.md`-t **és** a `README.hu.md`-t (funkciólista / env változók).
 - Változtatás után futtasd a teszteket (`tests/run.sh`), és új funkcióhoz írj e2e tesztet a `tests/e2e/app.spec.js`-be.
 - Git: **csak lokális repó**, nincs remote – ne push-olj. Commitolni csak kérésre.
 
@@ -16,7 +16,7 @@ a pull requestet a felhasználó nyitja meg kézzel. A felhasználói dokumentá
   `v2.1.0` (+ `release/2.1`) – angol felület, idézőjeles kifejezéskeresés, egy repó több könyvtárral.
 - Release menete (kérésre): `tests/run.sh` zöld → verzió emelés a `package.json`-ban **és** a `package-lock.json`
   két helyén → commit → annotált tag (`git tag -a vX.Y.Z -m "vX.Y.Z – rövid leírás"`) → `release/X.Y` branch a tagre.
-- Főverzió, ha a beállítás (env / adatformátum) nem visszafelé kompatibilis; ilyenkor a README „Átállás” részét is frissítsd.
+- Főverzió, ha a beállítás (env / adatformátum) nem visszafelé kompatibilis; ilyenkor a README „Átállás” / „Migrating” részét is frissítsd (mindkét nyelven).
 
 ## Biztonsági követelmények (a felhasználó kifejezett kérései)
 - `GIT_URL` (a git **szerver** alap URL-je) és `GIT_TOKEN` **csak env változóból** jöhet; a felületről csak
