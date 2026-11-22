@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs/promises');
+const fsSync = require('fs');
 const crypto = require('crypto');
 const cfg = require('./lib/config');
 const git = require('./lib/git');
@@ -24,7 +25,26 @@ if (cfg.appUser && cfg.appPassword) {
 }
 
 const pkgDir = (name) => path.join(__dirname, 'node_modules', name);
-app.use(express.static(path.join(__dirname, 'public')));
+
+// PWA: a service worker a kliens fájlok (public/**, package-lock.json) hash-ével verziózott gyorsítótárat használ,
+// így új build után a böngésző frissíti az app héját. A sw.js mindig revalidálva.
+const swSource = (() => {
+  const hash = crypto.createHash('sha256');
+  const walk = (dir) => {
+    for (const e of fsSync.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      else hash.update(p).update(fsSync.readFileSync(p));
+    }
+  };
+  walk(path.join(__dirname, 'public'));
+  hash.update(fsSync.readFileSync(path.join(__dirname, 'package-lock.json')));
+  return fsSync.readFileSync(path.join(__dirname, 'public', 'sw.js'), 'utf8').replace("'__VERSION__'", `'${hash.digest('hex').slice(0, 12)}'`);
+})();
+app.get('/sw.js', (req, res) => res.type('js').set('Cache-Control', 'no-cache').send(swSource));
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, p) => { if (p.endsWith('.webmanifest')) res.type('application/manifest+json'); },
+}));
 app.use('/vendor/toastui', express.static(path.join(pkgDir('@toast-ui/editor'), 'dist')));
 app.use('/vendor/github-markdown-css', express.static(pkgDir('github-markdown-css')));
 app.use('/vendor/diff2html', express.static(path.join(pkgDir('diff2html'), 'bundles')));

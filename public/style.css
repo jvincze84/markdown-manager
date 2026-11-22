@@ -134,6 +134,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 .toast.success { background: var(--success); }
 .toast.error { background: var(--danger); }
 .toast a { color: #fff; font-weight: 600; }
+.toast .btn { margin-left: 8px; height: 26px; padding: 0 10px; }
 .toast code { background: rgba(255,255,255,.15); padding: 1px 4px; border-radius: 3px; }
 
 /* ---------- Új fájl ---------- */

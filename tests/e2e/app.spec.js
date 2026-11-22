@@ -580,3 +580,46 @@ test('API: repó bemenet-ellenőrzés', async ({ request }) => {
   const repos = await (await request.get('/api/repos')).json();
   expect(repos.map((r) => r.id).sort()).toEqual(['kb', 'masik']);
 });
+
+test('PWA: manifest, ikonok, service worker, offline oldal', async ({ page, context, request }) => {
+  const errors = collectErrors(page);
+  // manifest + ikonok
+  const mres = await request.get('/manifest.webmanifest');
+  expect(mres.ok()).toBe(true);
+  expect(mres.headers()['content-type']).toContain('application/manifest+json');
+  const manifest = await mres.json();
+  expect(manifest).toMatchObject({ name: 'Markdown Manager', start_url: '/', display: 'standalone' });
+  expect(manifest.icons.some((i) => i.sizes === '512x512' && i.purpose === 'maskable')).toBe(true);
+  for (const icon of manifest.icons) expect((await request.get(icon.src)).ok(), icon.src).toBe(true);
+  // sw.js: verziózott, nem gyorsítótárazható
+  const sw = await request.get('/sw.js');
+  expect(sw.headers()['cache-control']).toBe('no-cache');
+  const swText = await sw.text();
+  expect(swText).not.toContain('__VERSION__');
+  expect(swText).toMatch(/const VERSION = '[0-9a-f]{12}'/);
+
+  await home(page);
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/manifest.webmanifest');
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute('content', /^#/);
+  // a service worker aktív, újratöltés után az oldalt is ő vezérli
+  expect(await page.evaluate(async () => (await navigator.serviceWorker.ready).active.scriptURL)).toMatch(/\/sw\.js$/);
+  await home(page);
+  expect(await page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
+  // az app héja a gyorsítótárban, az API / repó tartalom nem
+  const cached = await page.evaluate(async () => {
+    const keys = [];
+    for (const name of await caches.keys()) for (const r of await (await caches.open(name)).keys()) keys.push(new URL(r.url).pathname);
+    return keys;
+  });
+  expect(cached).toEqual(expect.arrayContaining(['/app.js', '/style.css', '/offline.html', '/vendor-built/toastui-editor-all.min.js']));
+  expect(cached.filter((p) => /^\/(api|assets)\//.test(p))).toEqual([]);
+  // offline: a hálózat nem elérhető (a SW kérése is elbukik) → navigáció helyett az offline oldal
+  const offline = (route) => route.abort('internetdisconnected');
+  await context.route('**/*', offline);
+  await page.reload().catch(() => {});
+  await expect(page.locator('h1')).toHaveText('You are offline');
+  await context.unroute('**/*', offline);
+  await page.click('#retry');
+  await page.waitForSelector('a.file', { state: 'attached' });
+  expect(errors.filter((e) => !/ERR_INTERNET_DISCONNECTED|Failed to fetch|NetworkError/.test(e))).toEqual([]);
+});

@@ -1,6 +1,9 @@
 // A tesztek egy közös, futó szerveren dolgoznak (git állapot!) → sorban, egy workerrel futnak.
 const { defineConfig } = require('@playwright/test');
 
+// A service worker hálózati kérései is menjenek át a context.route-on (PWA offline teszt)
+process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = '1';
+
 module.exports = defineConfig({
   testDir: '.',
   workers: 1,

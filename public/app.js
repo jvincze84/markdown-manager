@@ -75,6 +75,7 @@
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
     $('#md-css-light').disabled = dark;
     $('#md-css-dark').disabled = !dark;
+    $('meta[name="theme-color"]').content = dark ? '#161b22' : '#24292f'; // a fejléc színe (PWA ablak / mobil címsor)
     const [icon, label] = THEMES[pref];
     const btn = $('#theme-toggle');
     btn.textContent = icon;
@@ -1747,6 +1748,19 @@
   window.addEventListener('beforeunload', (e) => {
     if (layers.some((l) => l.dirty())) e.preventDefault();
   });
+
+  // ---------- PWA: service worker ----------
+  // Csak biztonságos környezetben (https vagy localhost) érhető el. Új verzió aktiválásakor (új build) szólunk,
+  // de nem töltünk újra magától (elveszne a nem mentett szerkesztés).
+  if ('serviceWorker' in navigator) {
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController) return;
+      const el = toast('A new version of Markdown Manager is available. <button type="button" class="btn">⟳ Reload</button>', 'info', 30000);
+      el.querySelector('button').addEventListener('click', () => location.reload());
+    });
+    navigator.serviceWorker.register('/sw.js').catch((e) => console.warn('Service worker registration failed:', e));
+  }
 
   applyTheme();
   loadAll()

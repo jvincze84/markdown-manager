@@ -49,6 +49,7 @@ Helyben **nincs Node** – minden Dockerben fut.
 | `public/app.js` | teljes kliens (vanilla JS, egy IIFE): fa, keresés, repó szűrő, repókezelő, rétegek (`class Layer`), szerkesztő, diff, előzmények, téma, emoji választó |
 | `public/mdtable.js` | markdown táblázat-igazító (böngészőben és egységtesztben is fut) |
 | `public/style.css` | felület; **minden szín CSS-változó** (`:root` világos / `:root[data-theme="dark"]` sötét) |
+| `public/sw.js`, `public/manifest.webmanifest`, `public/offline.html`, `public/icons/` | PWA: service worker (a szerver a `/sw.js`-be a `public/**` + lock hash-ét illeszti `VERSION`-ként → új build = új cache), manifest, offline oldal, ikonok (SVG forrás → PNG: `scripts/make-icons.sh`) |
 | `public/code-theme.css` | kódszínezés témája (Material-szerű, világos + sötét) |
 | `build/editor-entry.js` | esbuild bundle: Toast UI Editor + code-syntax-highlight plugin + Prism nyelvek → `public/vendor-built/` |
 | `build/emoji-build.js` | build időben: `emojibase-data` (hu+en) → `vendor-built/emoji.json` (devDependency, nem kerül a runtime image-be) |
@@ -100,6 +101,10 @@ Helyben **nincs Node** – minden Dockerben fut.
   szomszédos kódot (egyszer így tűnt el az „Új fájl” gomb kezelője) – erre valók az e2e tesztek.
 - A felület angol; dátumok `en-GB` (`LOCALE` az `app.js`-ben, szerveren a sync napló ideje), relatív idő `Intl.RelativeTimeFormat('en')`.
   A rendezés `Intl.Collator('hu', { numeric: true })` marad (a fájlnevek / tartalom jellemzően magyar).
+- **PWA / service worker**: `/api/*` és `/assets/*` sosem kerül a SW cache-be (mindig hálózat); navigáció hálózatról, hiba esetén `offline.html`;
+  minden más statikus fájl cache-first a verziózott cache-ből → új statikus fájl / vendor útvonal előbb-utóbb a SW-n át jön, a `PRECACHE` listát
+  (`public/sw.js`) bővítsd, ha az `index.html`-be új fájl kerül. A SW csak secure contextben (https / localhost) fut.
+  E2E: a Playwright `setOffline` nem hat a SW kéréseire → `PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS=1` (config) + `context.route` abort.
 - Az emoji-választó csak angol nevekkel/kulcsszavakkal keres (`build/emoji-build.js`).
 
 ## Tesztkörnyezet

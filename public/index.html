@@ -4,6 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Markdown Manager</title>
+  <!-- PWA: telepíthető alkalmazás (manifest + service worker, lásd app.js / sw.js) -->
+  <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
+  <meta name="theme-color" content="#24292f">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Markdown">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/icons/favicon-32.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <link rel="stylesheet" id="md-css-light" href="/vendor/github-markdown-css/github-markdown-light.css">
   <link rel="stylesheet" id="md-css-dark" href="/vendor/github-markdown-css/github-markdown-dark.css">
   <link rel="stylesheet" href="/vendor/toastui/toastui-editor.css">
@@ -20,6 +30,7 @@
       document.documentElement.dataset.theme = dark ? 'dark' : 'light';
       document.getElementById('md-css-light').disabled = dark;
       document.getElementById('md-css-dark').disabled = !dark;
+      document.querySelector('meta[name="theme-color"]').content = dark ? '#161b22' : '#24292f';
     })();
   </script>
 </head>
