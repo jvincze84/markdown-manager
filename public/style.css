@@ -150,6 +150,21 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 .new-path-prefix { padding: 0 2px 0 10px; color: var(--fg-muted); font-family: ui-monospace, monospace; font-size: 12px; white-space: nowrap; }
 .new-path-input { flex: 1; min-width: 0; height: 100%; border: 0; outline: none; padding: 0 10px 0 0; font: 13px ui-monospace, monospace; }
 
+/* ---------- Mobil / PWA: sortörés, hogy semmi ne lógjon ki a képernyőből ---------- */
+html { -webkit-text-size-adjust: 100%; }
+body { overflow-x: hidden; }
+@media (max-width: 800px) {
+  .topbar { flex-wrap: wrap; gap: 8px; padding: 8px 12px; }
+  .brand { flex: 1 1 100%; }
+  .search { order: 1; flex: 1 1 100%; flex-direction: column; }
+  .sfield, .sfield:first-child { flex: 1 1 auto; width: 100%; box-sizing: border-box; }
+  .topbar > .btn, .topbar .sync-wrap { order: 2; }
+  .statusbar { padding: 6px 12px; overflow-wrap: anywhere; }
+  .content { margin: 12px auto; padding: 0 12px; }
+  .toolbar { flex-wrap: wrap; }
+  .toolbar-spacer { display: none; }
+}
+
 /* ---------- Toolbar / szűrő ---------- */
 .toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .toolbar-spacer { flex: 1; }

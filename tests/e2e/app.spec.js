@@ -623,3 +623,15 @@ test('PWA: manifest, ikonok, service worker, offline oldal', async ({ page, cont
   await page.waitForSelector('a.file', { state: 'attached' });
   expect(errors.filter((e) => !/ERR_INTERNET_DISCONNECTED|Failed to fetch|NetworkError/.test(e))).toEqual([]);
 });
+
+test('mobil nézet: a felső sáv és az eszköztár nem lóg ki a képernyőből', async ({ page }) => {
+  await page.setViewportSize({ width: 412, height: 900 });
+  await page.goto('/');
+  await page.waitForSelector('a.file', { state: 'attached' });
+  const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(over).toBeLessThanOrEqual(0);
+  const sync = await page.locator('#sync').boundingBox();
+  expect(sync.x + sync.width).toBeLessThanOrEqual(412);
+  const exp = await page.locator('#collapse-all').boundingBox();
+  expect(exp.x + exp.width).toBeLessThanOrEqual(412);
+});
